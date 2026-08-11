@@ -1,0 +1,122 @@
+# SMART on FHIR development environment: RefApp 3.7.1 alongside Keycloak 26.
+#
+# Service definitions for gateway/frontend/backend/db follow
+# openmrs-distro-referenceapplication 3.7.1 so this stays recognisable to anyone
+# who knows that stack. Keycloak and its provider/realm wiring are the additions.
+#
+# Bring it up with ./up.sh, which builds the Keycloak provider and renders the
+# realm first. Running `docker compose up` directly will start Keycloak without
+# either.
+#
+# Everything here is a development configuration: Keycloak runs start-dev with an
+# embedded database and HTTP only. Do not model a deployment on it.
+
+name: smartonfhir-dev
+
+services:
+  gateway:
+    image: openmrs/openmrs-reference-application-3-gateway:${REFAPP_TAG:-3.7.1}
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      # OpenMRS is reached at http://localhost/openmrs, which is the URL the realm
+      # is rendered with. The SMART launch and patient-selection URLs are browser
+      # redirects, so they must use a host the browser can resolve.
+      - "${OPENMRS_PORT:-80}:80"
+
+  frontend:
+    image: openmrs/openmrs-reference-application-3-frontend:${REFAPP_TAG:-3.7.1}
+    restart: unless-stopped
+    environment:
+      SPA_PATH: /openmrs/spa
+      API_URL: /openmrs
+      SPA_CONFIG_URLS: /openmrs/spa/config-core_demo.json
+      SPA_DEFAULT_LOCALE:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      timeout: 5s
+    depends_on:
+      - backend
+
+  backend:
+    image: openmrs/openmrs-reference-application-3-backend:${REFAPP_TAG:-3.7.1}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      OMRS_CONFIG_MODULE_WEB_ADMIN: "true"
+      OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
+      OMRS_CONFIG_CREATE_TABLES: "true"
+      OMRS_CONFIG_CONNECTION_SERVER: db
+      OMRS_CONFIG_CONNECTION_DATABASE: openmrs
+      OMRS_CONFIG_CONNECTION_USERNAME: ${OMRS_DB_USER:-openmrs}
+      OMRS_CONFIG_CONNECTION_PASSWORD: ${OMRS_DB_PASSWORD:-openmrs}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs"]
+      timeout: 5s
+      interval: 10s
+      retries: 30
+      start_period: 120s
+    volumes:
+      - openmrs-data:/openmrs/data
+      # The smartonfhir omod is mounted here once WS3 has ported it. Until then the
+      # environment exists so that port can be developed against a real RefApp.
+      # - ../omod/target/smartonfhir-2.0.0-SNAPSHOT.omod:/openmrs/distribution/openmrs_modules/smartonfhir.omod
+
+  db:
+    image: mariadb:10.11.7
+    restart: unless-stopped
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+    healthcheck:
+      test: 'mysql --user=${OMRS_DB_USER:-openmrs} --password=${OMRS_DB_PASSWORD:-openmrs} --execute "SHOW DATABASES;"'
+      interval: 3s
+      timeout: 1s
+      retries: 20
+    environment:
+      MYSQL_DATABASE: openmrs
+      MYSQL_USER: ${OMRS_DB_USER:-openmrs}
+      MYSQL_PASSWORD: ${OMRS_DB_PASSWORD:-openmrs}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-openmrs}
+    volumes:
+      - db-data:/var/lib/mysql
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_TAG:-26.7.1}
+    restart: unless-stopped
+    # Pinned deliberately. Every SPI this provider implements is internal to
+    # Keycloak -- the server logs KC-SERVICES0047 for each one -- so a minor
+    # upgrade can break it with no deprecation cycle. Move the pin only with
+    # realm/verify-realm-import.sh green against the new version.
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8180}:8080"
+    volumes:
+      # Built by up.sh from the sibling openmrs-contrib-keycloak-smart-auth checkout.
+      - ${SMART_AUTH_JAR:-../../openmrs-contrib-keycloak-smart-auth/openmrs-keycloak-smart-auth/target/openmrs-keycloak-smart-auth-1.0.0-SNAPSHOT.jar}:/opt/keycloak/providers/openmrs-smart-auth.jar:ro
+      # Rendered by up.sh: holds a generated secret and this environment's URLs,
+      # so it is never committed.
+      - ./target/import:/opt/keycloak/data/import:ro
+      # Keycloak state is deliberately not persisted. The realm is declarative and
+      # re-imported on every start, so a persisted H2 database would only let a
+      # container drift from the committed realm -- and a named volume here mounts
+      # as root while Keycloak runs as uid 1000, so it cannot write to it anyway.
+    healthcheck:
+      # start-dev serves the management endpoints on 9000.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+volumes:
+  openmrs-data:
+  db-data:

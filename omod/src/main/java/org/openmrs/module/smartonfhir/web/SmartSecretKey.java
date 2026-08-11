@@ -16,7 +16,7 @@ import lombok.Data;
 @Data
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class SmartSecretKey {
-	
+
 	@JsonProperty(value = "smart-shared-secret-key", required = true)
 	private String smartSharedSecretKey;
 }

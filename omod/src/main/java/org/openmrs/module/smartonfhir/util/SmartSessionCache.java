@@ -16,21 +16,21 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.openmrs.module.smartonfhir.model.SmartSession;
 
 public class SmartSessionCache {
-	
+
 	private static LoadingCache<String, SmartSession> cache;
-	
+
 	public SmartSessionCache() {
 		if (cache == null) {
 			cache = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).maximumSize(500).recordStats()
 			        .build(key -> null);
 		}
 	}
-	
+
 	public boolean put(String key, SmartSession value) {
 		cache.put(key, value);
 		return Boolean.TRUE;
 	}
-	
+
 	public SmartSession get(String key) {
 		try {
 			return cache.get(key);
@@ -39,10 +39,10 @@ public class SmartSessionCache {
 			return null;
 		}
 	}
-	
+
 	public boolean clear(String key) {
 		cache.invalidate(key);
-		
+
 		return Boolean.TRUE;
 	}
 }

@@ -16,34 +16,34 @@ import lombok.Data;
 @Data
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class SmartConformance {
-	
+
 	@JsonProperty(value = "authorization_endpoint", required = true)
 	private String authorizationEndpoint;
-	
+
 	@JsonProperty(value = "token_endpoint", required = true)
 	private String tokenEndpoint;
-	
+
 	@JsonProperty("token_endpoint_auth_methods_supported")
 	private String[] tokenEndpointAuthMethodsSupported;
-	
+
 	@JsonProperty("registration_endpoint")
 	private String registrationEndpoint;
-	
+
 	@JsonProperty("scopes_supported")
 	private String[] scopesSupported;
-	
+
 	@JsonProperty("response_types_supported")
 	private String[] responseTypesSupported;
-	
+
 	@JsonProperty("management_endpoint")
 	private String managementEndpoint;
-	
+
 	@JsonProperty("introspection_endpoint")
 	private String introspectionEndpoint;
-	
+
 	@JsonProperty("revocation_endpoint")
 	private String revocationEndpoint;
-	
+
 	@JsonProperty(value = "capabilities", required = true)
 	private String[] capabilities;
 }

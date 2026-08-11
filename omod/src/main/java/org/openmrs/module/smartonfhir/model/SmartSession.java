@@ -13,8 +13,8 @@ import lombok.Data;
 
 @Data
 public class SmartSession {
-	
+
 	private String visitUuid;
-	
+
 	private String patientUuid;
 }

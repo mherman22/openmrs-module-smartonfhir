@@ -1,0 +1,3 @@
+# Rendered per-environment: contains a generated secret and local URLs.
+target/
+.env

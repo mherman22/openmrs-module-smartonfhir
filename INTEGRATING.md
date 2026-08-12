@@ -29,7 +29,7 @@ SMART**.
 |---|---|
 | **An O3 frontend module (ESM) that ships as part of the EMR** — a dashboard, a chart widget, a workspace | **Not SMART.** Call the FHIR API directly with `openmrsFetch`. The clinician is already signed in and the session cookie authenticates you. Adding SMART gains nothing: it authenticates a user who is already authenticated. |
 | **A separately deployed app**, yours or a third party's, that should work against any SMART-capable EHR | **SMART.** [Standalone launch](#step-2a--standalone-launch) if the user starts it from its own URL. |
-| **A separately deployed app the clinician should open from a patient's chart** | **SMART EHR launch** — but read the warning in [step 2b](#step-2b--ehr-launch) first. It is not currently safe to use. |
+| **A separately deployed app the clinician should open from a patient's chart** | **SMART EHR launch.** Works, and registered apps only. Nothing in the O3 chart links to it yet, so today the launch is started by URL — see [step 2b](#step-2b--ehr-launch). |
 | **An unattended service** — nightly export, population analytics, a monitoring job with no user | **Not supported yet.** SMART Backend Services (`client_credentials` with an asymmetric client assertion) is not implemented. See [CONFORMANCE.md](CONFORMANCE.md). |
 
 An O3 ESM reading FHIR with the user's session looks like this, and needs nothing from this module:
@@ -127,54 +127,65 @@ kcadm.sh get "clients/$CLIENT/default-client-scopes" -r openmrs --fields name
 
 The user opens your app directly — a bookmark, an icon, your own login page. There is no launch
 notification and no `launch` parameter. Your app simply proceeds to step 3, and asks for the patient
-context it needs by requesting `launch/patient` in step 4.
-
-This is the flow that works today, and it is the one to use.
+context it needs by requesting `launch/patient` in step 4, which is what causes the clinician to be
+shown a patient-selection screen.
 
 ## Step 2b — EHR launch
 
 *Spec: [Launch App: EHR Launch](https://hl7.org/fhir/smart-app-launch/app-launch.html#launch-app-ehr-launch).*
 
-> **Do not use this yet.** The Keycloak-side authenticator that resolves an EHR launch looks the user
-> up as the literal username `admin`
-> ([`SmartLaunchAccessAuthenticator`](https://github.com/openmrs/openmrs-contrib-keycloak-smart-auth),
-> a deferral carried from 1.x). An EHR launch therefore builds its token against `admin` rather than
-> the clinician who started it, which is both wrong and a privilege escalation. It is the first item
-> in [ROADMAP.md](ROADMAP.md).
+A clinician is working in OpenMRS, looking at a patient, and opens your app for them. This works, and
+has been walked end to end; what is still missing is the affordance in the O3 chart, so today the
+launch has to be started by URL.
 
-The mechanism itself exists and is spec-shaped, so here is what it does and what is missing.
+**Register your app in the registry as well as at Keycloak.** Keycloak knows your `client_id` and
+redirect URI; OpenMRS needs to know your *launch* URL. Add an entry to
+`{application data directory}/config/smart-apps.json`:
 
-The EMR starts the launch by sending the browser to:
-
-```
-{openmrs}/ms/smartEhrLaunchServlet
-  ?launchUrl={your app's launch URL}
-  &launchContext=patient
-  &patientId={patient uuid}
-```
-
-`SmartEhrLaunchServlet` requires an authenticated OpenMRS user, mints an opaque single-use launch
-handle bound to that user, and redirects to your app exactly as the spec requires:
-
-```
-{your launch URL}?iss={openmrs}/ws/fhir2/R4&launch={handle}
+```json
+{
+  "apps": [
+    {
+      "id": "risk-dashboard",
+      "name": "Patient Risk Dashboard",
+      "description": "Shown in the chart when a clinician chooses an app",
+      "clientId": "risk-dashboard",
+      "launchUrl": "https://risk.example.org/launch",
+      "launchContext": "patient"
+    }
+  ]
+}
 ```
 
-Your app then reads `iss`, fetches discovery from it (step 3), and includes both `launch={handle}` and
-the `launch` scope in step 4. Keycloak redeems the handle against OpenMRS and puts the resulting
-patient into your token response.
+`id` is how a launch names your app, `launchUrl` is where the browser is sent. An app that is not in
+this file cannot be launched: the launch address is looked up here rather than supplied by whoever
+starts the launch, because it used to be a request parameter and that made the servlet an open
+redirector — a single-use launch handle delivered to any host named in the URL.
 
-Two things are missing before this is usable, beyond the `admin` defect:
+The launch is then started by sending the clinician's browser to:
 
-- **No app registry.** The launch URL is taken from the `launchUrl` request parameter, so nothing
-  constrains where the browser is sent — an open redirector that hands a launch handle to whatever
-  host the URL names. Registered apps need to live in OpenMRS, with the launch URL looked up rather
-  than supplied.
-- **No affordance in O3.** Nothing in the patient chart links to the servlet, so a clinician has no
-  way to start a launch. This is where an O3 ESM has a genuine job to do: a "SMART apps" tab or
-  action in the chart that lists registered apps and links to the servlet with the current patient.
+```
+{openmrs}/ms/smartEhrLaunchServlet?appId=risk-dashboard&patientId={patient uuid}
+```
 
-If you are building that ESM, you are writing the *launcher*, not a SMART app — see the first row of
+which redirects to your launch URL with the two parameters the specification requires:
+
+```
+https://risk.example.org/launch?iss={openmrs}/ws/fhir2/R4&launch={opaque handle}
+```
+
+Your app reads `iss`, fetches discovery from it (step 3), and in step 4 includes **`launch={handle}`**
+and the **`launch`** scope — not `launch/patient`, because the EHR has already chosen the patient.
+Everything from step 3 onward is identical to a standalone launch, and the token response carries the
+patient the clinician was looking at.
+
+No password is asked for: the clinician's OpenMRS session is what authenticates the launch.
+
+**What is still missing.** Nothing in the O3 patient chart links to the launch servlet, so a clinician
+cannot start a launch from the interface. `GET {openmrs}/ms/smartApps` lists the registered apps —
+`id`, `name`, `description`, `launchContext`, and deliberately not launch URLs or client ids — for
+whatever builds that affordance. If you are writing an O3 frontend module to do it, you are building
+the *launcher* rather than a SMART app; see the first row of
 [the table above](#which-integration-do-you-actually-need).
 
 ## Step 3 — Retrieve the discovery document

@@ -27,25 +27,22 @@ Still worth adding: a test that a launch handle issued to one user cannot be red
 `SmartLaunchContextService` enforces it and `SmartLaunchContextServiceTest` covers the service, but
 nothing covers it through the servlet.
 
-### 2. `smartEhrLaunchServlet` will redirect anywhere — S
+### 2. ~~`smartEhrLaunchServlet` will redirect anywhere~~ — done
 
-The app's launch URL is read straight from the `launchUrl` request parameter, so the servlet is an open
-redirector that hands a single-use launch handle to whatever host the URL names.
+Fixed by 3. The launch address is looked up from the registry; a `launchUrl` in the request is ignored,
+and `verify-env.sh` checks that a smuggled one does not change where the browser goes.
+`SmartAppSelectorServlet`, which had the same flaw and no caller, is removed.
 
-**Done when** the launch URL comes from registered app configuration rather than the request, or is at
-minimum checked against an allow-list, with a test for a rejected URL.
+### 3. ~~No app registry~~ — done
 
-*Depends on 3 for the registry; the allow-list is independently shippable.*
+Apps are recorded in `config/smart-apps.json`, read by `SmartAppRegistry`, and listed for the frontend
+by `SmartAppsServlet` — without launch URLs or client ids, which a chart screen has no use for. An
+unregistered app answers 404, and no registry file means nothing is launchable rather than a fallback
+to a caller-supplied address.
 
-### 3. No app registry — M
-
-There is nowhere to record which SMART apps a deployment permits, their launch URLs, or which users may
-launch them. The RefApp 2.x descriptors this replaced were deleted with that UI.
-
-**Done when** apps can be listed and managed (name, client id, launch URL, required scopes), the launch
-servlet resolves the launch URL from the registry by app id, and unregistered apps cannot be launched.
-
-*Blocks 4. Enables 2.*
+Not done, and worth doing if apps ever need managing at runtime: there is no UI for editing the
+registry, and no per-user or per-role restriction on which apps a given clinician may launch. Both were
+out of scope for closing the open redirector.
 
 ### 4. No way to start an EHR launch from O3 — M
 

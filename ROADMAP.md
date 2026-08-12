@@ -44,16 +44,15 @@ Not done, and worth doing if apps ever need managing at runtime: there is no UI 
 registry, and no per-user or per-role restriction on which apps a given clinician may launch. Both were
 out of scope for closing the open redirector.
 
-### 4. No way to start an EHR launch from O3 — M
+### 4. ~~No way to start an EHR launch from O3~~ — done
 
-Nothing in the patient chart links to the launch servlet, so a clinician cannot start a launch even
-though the mechanism works.
+"Launch an app" is in the patient banner's Actions menu, listing what the server has registered and
+starting an EHR launch for the patient in the chart. Walked in a browser from sign-in to the app reading
+that patient over FHIR. Hidden when no apps are registered.
 
-**Done when** a patient-chart extension lists the registered apps and links to
-`/ms/smartEhrLaunchServlet` with the current patient, and a browser test walks chart → app → token
-carrying that patient.
-
-*Depends on 1 and 3. This is frontend work, in `openmrs-esm-smart-app-launch-app`.*
+Not done, and worth doing: the walk is a scratch script rather than a spec in the frontend module's
+`e2e/`, so nothing guards it automatically. It needs the test app running, which is why it was left
+out — worth solving, because this is now the flow a clinician actually uses.
 
 ### 5. `launch/encounter` redirects to a page that no longer exists — S
 
@@ -138,13 +137,11 @@ asking is a weak consent screen.
 
 **Done when** the authenticator substitutes a `{CLIENT_NAME}` placeholder and the picker shows it.
 
-### 13. `launch-ehr` and the EHR context capabilities are advertised without a walked flow — S
+### 13. ~~`launch-ehr` and the EHR context capabilities are advertised without a walked flow~~ — earned
 
-`launch-ehr`, `context-ehr-patient` and `context-ehr-encounter` are claimed on the strength of the
-server-side mechanism, while no clinician can start such a launch. By the standard applied to
-`launch-standalone` these are overclaims.
-
-**Done when** they are either earned by 1–4 or withdrawn until then.
+`launch-ehr` and `context-ehr-patient` are now honest: a clinician starts a launch from the chart and
+the app is given that patient. `context-ehr-encounter` is still an overclaim, since encounter launch
+depends on **5**.
 
 ### 14. Discovery endpoints are derived, Keycloak-shaped — S
 

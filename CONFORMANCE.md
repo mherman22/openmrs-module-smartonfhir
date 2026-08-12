@@ -15,7 +15,7 @@ implement fails in a way that looks like the app's fault.
 |---|---|---|
 | Register app (redirect URIs, launch URL) | **Manual** | No dynamic client registration. Redirect URIs at Keycloak; launch URLs in the module's `config/smart-apps.json`. |
 | Standalone launch | **Yes** | Walked end to end in a browser, including patient selection. |
-| EHR launch | **Yes, except the affordance** | Walked end to end: the EHR notifies the app with `iss` and `launch`, the handle is redeemed against the clinician's OpenMRS session with no password prompt, and the token response carries the patient. Apps are registered in `config/smart-apps.json`, so an unregistered app cannot be launched and the launch address cannot be supplied by the caller. Still missing: nothing in the O3 chart links to the launch servlet, so a clinician cannot start one from the interface. |
+| EHR launch | **Yes** | Walked in a browser from a patient chart: "Launch an app" in the banner Actions menu, the app is notified with `iss` and `launch`, the handle is redeemed against the clinician's OpenMRS session with no password prompt, and the token response carries the patient. Apps are registered in `config/smart-apps.json`, so an unregistered app cannot be launched and the launch address cannot be supplied by the caller. |
 | `.well-known/smart-configuration` | **Yes** | All SMART 2.x required fields present. |
 | Authorization code flow | **Yes** | |
 | PKCE, `S256` required, `plain` refused | **Yes** | `code_challenge_methods_supported` is `["S256"]` only. |

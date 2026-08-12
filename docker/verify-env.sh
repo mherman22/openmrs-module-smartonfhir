@@ -91,6 +91,37 @@ else
   fail "the realm was imported" "no import line in the Keycloak log"
 fi
 
+step "The SMART discovery document"
+DISCO="$(curl -sL --max-time 20 "$OPENMRS/ws/fhir2/R4/.well-known/smart-configuration" 2>/dev/null)"
+got="$(printf '%s' "$DISCO" | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    print('unparseable'); raise SystemExit
+missing=[k for k in ('authorization_endpoint','token_endpoint','capabilities','scopes_supported') if not d.get(k)]
+print('complete' if not missing else 'missing: %s' % missing)")"
+check "the module serves a discovery document" "$got" "complete"
+
+# The endpoints an app is told to use must be ones a browser can reach, not
+# container-internal hostnames.
+got="$(printf '%s' "$DISCO" | python3 -c "
+import sys,json
+try: d=json.load(sys.stdin)
+except Exception: print('unparseable'); raise SystemExit
+a=d.get('authorization_endpoint','')
+print('reachable' if a.startswith('http://localhost:') else 'unreachable: %s' % a)")"
+check "the advertised authorization endpoint is browser-reachable" "$got" "reachable"
+
+got="$(printf '%s' "$DISCO" | python3 -c "
+import sys,json
+try: d=json.load(sys.stdin)
+except Exception: print('unparseable'); raise SystemExit
+want={'launch-ehr','launch-standalone','context-ehr-patient','context-standalone-patient'}
+have=set(d.get('capabilities',[]))
+print('all' if want.issubset(have) else 'missing: %s' % sorted(want-have))")"
+check "the launch capabilities are advertised" "$got" "all"
+
 step "The audience validator decides launches on the aud parameter"
 PKCE="code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
 REDIRECT="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$OPENMRS/")"

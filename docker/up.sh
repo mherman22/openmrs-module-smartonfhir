@@ -110,6 +110,27 @@ json.dump({"smart-shared-secret-key": secret}, open(sys.argv[2], "w"), indent=2)
 PY
 note "wrote target/openmrs-config/smart-secret-key.json for the OpenMRS module"
 
+# The module needs to know which authorization server to trust, and which audience
+# to insist on. Written here so it agrees with the realm rendered above: the audience
+# must match what the app sends as aud, and what the Keycloak-side validator allows.
+python3 - "$HERE/target/openmrs-config/smart-oauth2.json" \
+  "http://keycloak:8080/realms/openmrs" \
+  "http://localhost:${KEYCLOAK_PORT}/realms/openmrs" \
+  "${OPENMRS_BASE_URL}/ws/fhir2/R4" <<'PYCFG'
+import json, sys
+target, internal_issuer, browser_issuer, audience = sys.argv[1:5]
+json.dump({
+    # Tokens are minted by Keycloak reached through the published port, so iss carries
+    # that hostname; but this module fetches JWKS server-to-server over the compose
+    # network, where the published port does not exist.
+    "issuer": browser_issuer,
+    "jwks-uri": internal_issuer + "/protocol/openid-connect/certs",
+    "audience": audience,
+    "username-claim": "preferred_username",
+}, open(target, "w"), indent=2)
+PYCFG
+note "wrote target/openmrs-config/smart-oauth2.json (issuer/audience matched to the realm)"
+
 # ------------------------------------------------------------------------ compose
 
 log "Starting the stack"

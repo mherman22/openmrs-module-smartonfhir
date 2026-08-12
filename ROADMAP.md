@@ -54,6 +54,19 @@ Not done, and worth doing: the walk is a scratch script rather than a spec in th
 `e2e/`, so nothing guards it automatically. It needs the test app running, which is why it was left
 out — worth solving, because this is now the flow a clinician actually uses.
 
+### 4b. A user whose OpenMRS username is NULL cannot sign in — S
+
+OpenMRS stores its `admin` user with `username` NULL and `system_id` `admin`, and any user created
+without a username is stored the same way. The federation provider queries on `username` alone, so
+those users cannot authenticate through Keycloak at all: they answer "Invalid username or password"
+whatever they type.
+
+OpenMRS's own `getUserService().getUserByUsername` matches username **or** system_id, which is why
+signing in to OpenMRS directly works for them.
+
+**Done when** the federation provider matches either column, with a test for a user that has only a
+system_id. In `openmrs-contrib-keycloak-auth`.
+
 ### 5. `launch/encounter` redirects to a page that no longer exists — S
 
 `SmartLaunchOptionSelected` sends an encounter launch to `findVisit.page`, deleted with the RefApp 2.x

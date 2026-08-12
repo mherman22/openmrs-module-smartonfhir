@@ -31,18 +31,20 @@ public class SmartConfigServlet extends HttpServlet {
 	 * Only what this server can actually do. A discovery document is a contract, and an app that
 	 * believes an unimplemented capability fails in a way that looks like the app's fault.
 	 * <p>
+	 * {@code launch-standalone} and {@code context-standalone-patient} are claimed because the flow has
+	 * been walked end to end in a browser: an app is redirected to the authorization server, the
+	 * clinician signs in with their own OpenMRS credentials, chooses a patient, and the token response
+	 * carries that patient as launch context. They were absent until that was true.
+	 * <p>
 	 * Deliberately absent:
 	 * <ul>
-	 * <li>{@code launch-standalone} and {@code context-standalone-patient}, because standalone launch
-	 * needs a patient-selection screen and there is not one yet. They belong here the moment there
-	 * is.</li>
 	 * <li>{@code permission-v2}, because granular scopes are parsed but not enforced. Enforcement
 	 * belongs in the FHIR resource providers, not in this module.</li>
 	 * </ul>
 	 */
-	private static final String[] CAPABILITIES = new String[] { "launch-ehr", "client-public",
-	        "client-confidential-symmetric", "context-ehr-patient", "context-ehr-encounter", "permission-patient",
-	        "permission-user", "sso-openid-connect" };
+	private static final String[] CAPABILITIES = new String[] { "launch-ehr", "launch-standalone", "client-public",
+	        "client-confidential-symmetric", "context-ehr-patient", "context-ehr-encounter", "context-standalone-patient",
+	        "permission-patient", "permission-user", "sso-openid-connect" };
 
 	private SmartConformance smartConformance;
 

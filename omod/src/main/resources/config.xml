@@ -54,9 +54,13 @@
 		<servlet-class>org.openmrs.module.smartonfhir.web.servlet.SmartEhrLaunchServlet</servlet-class>
 	</servlet>
 
+	<!--
+		The apps a clinician may launch. Read by whatever offers a way to launch them; it never
+		exposes an app's launch URL, which is the registry's business and nobody else's.
+	-->
 	<servlet>
-		<servlet-name>smartAppSelectorServlet</servlet-name>
-		<servlet-class>org.openmrs.module.smartonfhir.web.servlet.SmartAppSelectorServlet</servlet-class>
+		<servlet-name>smartApps</servlet-name>
+		<servlet-class>org.openmrs.module.smartonfhir.web.servlet.SmartAppsServlet</servlet-class>
 	</servlet>
 
 	<servlet>
@@ -133,8 +137,6 @@
 		<url-pattern>/ws/fhir2/*</url-pattern>
 		<url-pattern>/ms/smartEhrLaunchServlet</url-pattern>
 		<url-pattern>/ms/smartEhrLaunchServlet/*</url-pattern>
-		<url-pattern>/ms/smartAppSelectorServlet/</url-pattern>
-		<url-pattern>/ms/smartAppSelectorServlet/*</url-pattern>
 		<url-pattern>/ms/smartAccessConfirmation</url-pattern>
 		<url-pattern>/ms/smartAccessConfirmation/*</url-pattern>
 		<url-pattern>/smartonfhir/smartAccessConfirmation</url-pattern>

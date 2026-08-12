@@ -18,22 +18,30 @@ public class FhirBaseAddressStrategy {
 
 	private static final String DEFAULT_FHIR_VERSION = "R4";
 
-	public String getBaseSmartLaunchAddress(HttpServletRequest request) {
-		IServerAddressStrategy iServerAddressStrategy = Context.getRegisteredComponent("openmrsFhirAddressStrategy",
+	/**
+	 * This server's FHIR base URL, which an EHR launch sends to the app as {@code iss} and which the
+	 * app sends back as {@code aud}. Taken from the FHIR2 module's own address strategy so the three
+	 * agree.
+	 * <p>
+	 * This used to return the app's launch URL with {@code iss} and {@code launch=} already appended,
+	 * reading the app's address from a request parameter. That made every caller an open redirector.
+	 * Where the launch is sent is the app registry's business; this only answers where the FHIR API is.
+	 */
+	public String getFhirBaseUrl(HttpServletRequest request) {
+		IServerAddressStrategy addressStrategy = Context.getRegisteredComponent("openmrsFhirAddressStrategy",
 		    IServerAddressStrategy.class);
-		String baseURL = iServerAddressStrategy.determineServerBase(request.getServletContext(), request);
-		String smartAppLaunchURL = request.getParameter("launchUrl");
+		String baseUrl = addressStrategy.determineServerBase(request.getServletContext(), request);
 
-		if (!(baseURL.contains("R4") || baseURL.contains("R3"))) {
-			String fhirVersion = request.getParameter("fhirVersion");
-			if (fhirVersion == null) {
-				fhirVersion = DEFAULT_FHIR_VERSION;
-			}
-			baseURL = baseURL + fhirVersion;
+		if (baseUrl == null) {
+			return null;
 		}
 
-		String url = smartAppLaunchURL + "?iss=" + baseURL + "&launch=";
+		if (baseUrl.contains("R4") || baseUrl.contains("R3")) {
+			return baseUrl;
+		}
 
-		return url;
+		String fhirVersion = request.getParameter("fhirVersion");
+
+		return baseUrl + (fhirVersion == null ? DEFAULT_FHIR_VERSION : fhirVersion);
 	}
 }

@@ -20,6 +20,7 @@ while. Subsequent runs are fast.
 | FHIR base | <http://localhost/openmrs/ws/fhir2/R4> |
 | SMART discovery | <http://localhost/openmrs/ws/fhir2/R4/.well-known/smart-configuration> |
 | Keycloak | <http://localhost:8180> (`admin`/`admin`) |
+| Dev clinician | `doctor` / `Smart123` — a Keycloak user matching an OpenMRS demo user |
 
 ## Requirements
 
@@ -46,6 +47,42 @@ any of them if you skip the script:
    handshake agree. They are useless if they drift.
 
 Everything `up.sh` generates lands under `target/`, which is git-ignored.
+
+## How the bearer scheme is registered
+
+The authentication module reads its settings from **`openmrs-runtime.properties`**, filtered
+by the `authentication.` prefix — not from a file of its own. `up.sh` therefore appends:
+
+```properties
+authentication.scheme=smartBearer
+authentication.scheme.smartBearer.type=org.openmrs.module.smartonfhir.web.smart.SmartBearerTokenAuthenticationScheme
+```
+
+That is also the instruction for a real deployment. Two things about it are easy to get
+wrong:
+
+- A separate `authentication-runtime.properties` is **never read**.
+  `reloadConfigFromRuntimeProperties` takes the *application* name and uses
+  `authentication` as a key prefix.
+- The scheme is registered so that `Context.authenticate` can route SMART credentials to
+  it. It deliberately returns no credentials and no challenge URL of its own, because the
+  authentication module's filter is mapped to `/*`: a scheme that returns credentials there
+  makes that filter authenticate the request and then issue its interactive-login **success
+  redirect**, which is a 302 where a FHIR client expects data. Reading the bearer header is
+  `SmartBearerTokenFilter`'s job, scoped to the FHIR paths.
+
+## Development-only Keycloak changes
+
+`up.sh` applies two things at runtime that are **not** in the committed realm, so the realm
+stays production-shaped and no credential is in version control:
+
+- direct access grants on `smartClient`, so a test can obtain a token without a browser;
+- a Keycloak user matching an OpenMRS demo user. Until the user-federation provider is
+  ported, Keycloak has no knowledge of OpenMRS users, so the two are lined up by hand.
+
+Keycloak is recreated on every run. It holds no durable state by design, and realm import
+uses `IGNORE_EXISTING` — against a container whose realm already exists, an edited realm is
+silently ignored, so recreating it is what makes a realm change take effect at all.
 
 ## URLs have to be browser-reachable
 
@@ -91,7 +128,11 @@ credentials here are the defaults. Do not model a deployment on it.
 
 ## Status
 
-The environment stands up RefApp 3.7.1 and Keycloak 26 together so that the
-OpenMRS-side port can be developed against something real. The `smartonfhir` omod
-is **not yet mounted** — that mount is commented in `docker-compose.yml` and is
-enabled once the module itself has been ported.
+RefApp 3.7.1 and Keycloak 26 run together with the `smartonfhir` omod installed and
+configured. `verify-env.sh` covers the whole bearer path, including obtaining a real token
+and reading FHIR data with it.
+
+Not yet built: the patient-selection UI, so the interactive launch flows cannot be walked
+end to end in a browser; the Keycloak user-federation provider, which is why the dev user
+is lined up by hand; and granular scope enforcement, which belongs in fhir2's resource
+providers rather than here.

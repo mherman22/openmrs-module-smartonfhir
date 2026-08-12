@@ -22,9 +22,9 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import org.openmrs.User;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.smartonfhir.model.SmartSession;
+import org.openmrs.module.smartonfhir.util.SmartLaunchContextService;
 import org.openmrs.module.smartonfhir.util.SmartLaunchTokens;
 import org.openmrs.module.smartonfhir.util.SmartSecretKeyHolder;
-import org.openmrs.module.smartonfhir.util.SmartSessionCache;
 
 public class SmartAccessConfirmation extends HttpServlet {
 
@@ -50,11 +50,10 @@ public class SmartAccessConfirmation extends HttpServlet {
 			return;
 		}
 
-		SmartSessionCache smartSessionCache = new SmartSessionCache();
-		SmartSession smartSession = smartSessionCache.get(launchId);
+		// Single use, and only by the user the handle was issued to.
+		SmartSession smartSession = new SmartLaunchContextService().redeem(launchId, user.getUsername());
 
 		if (smartSession == null) {
-			// An unknown or already-used launch id must not yield a token.
 			res.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unknown launch");
 			return;
 		}

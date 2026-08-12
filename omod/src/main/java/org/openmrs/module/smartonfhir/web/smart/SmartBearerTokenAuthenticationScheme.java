@@ -20,15 +20,13 @@ import org.openmrs.api.context.Context;
 import org.openmrs.api.context.ContextAuthenticationException;
 import org.openmrs.api.context.Credentials;
 import org.openmrs.api.context.UsernamePasswordAuthenticationScheme;
+import org.openmrs.util.PrivilegeConstants;
 import org.openmrs.module.authentication.AuthenticationCredentials;
 import org.openmrs.module.authentication.UserLogin;
 import org.openmrs.module.authentication.web.AuthenticationSession;
 import org.openmrs.module.authentication.web.WebAuthenticationScheme;
 import org.openmrs.module.smartonfhir.auth.SmartBearerCredentials;
 import org.openmrs.module.smartonfhir.auth.SmartTokenCredentials;
-import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier;
-import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier.SmartAccessToken;
-import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifierHolder;
 
 /**
  * Authenticates FHIR requests that present a SMART access token, and stays out of the way
@@ -56,10 +54,6 @@ import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifierHolder;
 @Slf4j
 public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationScheme {
 
-	public static final String AUTHORIZATION_HEADER = "Authorization";
-
-	public static final String BEARER_PREFIX = "Bearer ";
-
 	/**
 	 * Scheme id to hand non-bearer credentials to. When unset the platform's username/password scheme
 	 * is used, which is what RefApp 3.7.1 authenticates with, so installing this scheme changes nothing
@@ -78,53 +72,26 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 	}
 
 	/**
-	 * Credentials only for a request that actually presents a bearer token, and only if that token
-	 * verifies. Returning null for everything else is what keeps the module's filter from redirecting
-	 * ordinary traffic.
+	 * Always null: this scheme never reads the request.
+	 * <p>
+	 * It is registered so that {@link Context#authenticate} can route SMART credentials here, not so
+	 * that the authentication module's filter can drive a login. Returning credentials from here makes
+	 * that filter authenticate the request itself and then issue its interactive-login success
+	 * redirect -- a 302 where a FHIR client expects its data. Reading the bearer header is
+	 * {@code SmartBearerTokenFilter}'s job, scoped to the FHIR paths, and it authenticates by calling
+	 * {@link Context#authenticate}, which arrives at {@link #authenticate(Credentials)} below.
 	 */
 	@Override
 	public AuthenticationCredentials getCredentials(AuthenticationSession session) {
-		String bearerToken = bearerTokenFrom(session);
-
-		if (bearerToken == null) {
-			return delegateCredentials(session);
-		}
-
-		SmartAccessTokenVerifier verifier = SmartAccessTokenVerifierHolder.getVerifier();
-
-		if (verifier == null) {
-			log.error("A SMART access token was presented but SMART on FHIR is not configured; refusing it");
-			return null;
-		}
-
-		SmartAccessToken token = verifier.verify(bearerToken);
-
-		if (token == null) {
-			// The verifier has already logged why. Returning null leaves the request
-			// unauthenticated, and the FHIR layer answers 401.
-			return null;
-		}
-
-		return new SmartBearerCredentials(getSchemeId(), token);
+		return null;
 	}
 
 	/**
-	 * No interactive challenge for a bearer request: an API client cannot fill in a login form. Null
-	 * for every other request too, so that the module's filter passes ordinary traffic through rather
-	 * than redirecting it to a login page.
+	 * Also null, so the module's filter passes every request down the chain rather than redirecting it
+	 * to a login page. Without this, O3's app shell and REST calls would be sent to one.
 	 */
 	@Override
 	public String getChallengeUrl(AuthenticationSession session) {
-		if (bearerTokenFrom(session) != null) {
-			return null;
-		}
-
-		AuthenticationScheme resolved = resolveDelegate();
-
-		if (resolved instanceof WebAuthenticationScheme) {
-			return ((WebAuthenticationScheme) resolved).getChallengeUrl(session);
-		}
-
 		return null;
 	}
 
@@ -186,29 +153,30 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 		return false;
 	}
 
-	private String bearerTokenFrom(AuthenticationSession session) {
-		if (session == null) {
-			return null;
-		}
 
-		String header = session.getRequestHeader(AUTHORIZATION_HEADER);
-
-		if (header == null || !header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
-			return null;
-		}
-
-		String token = header.substring(BEARER_PREFIX.length()).trim();
-
-		return token.isEmpty() ? null : token;
-	}
-
+	/**
+	 * Looks up the OpenMRS user a verified token names.
+	 * <p>
+	 * {@code UserService.getUserByUsername} is {@code @Authorized("Get Users")}, and this runs before
+	 * anyone is authenticated, so the call is refused and the user appears not to exist -- the token is
+	 * then rejected as naming an unknown user, which is a confusing way to fail. A proxy privilege is
+	 * the platform's own idiom for a lookup that has to happen in order to authenticate at all. It is
+	 * granted around this one call and removed in a finally block, so it cannot leak into the request.
+	 * <p>
+	 * The lookup matches username or systemId, which matters because OpenMRS's own {@code admin} account
+	 * has a null username and is identified by its systemId.
+	 */
 	private User findUser(String username) {
+		Context.addProxyPrivilege(PrivilegeConstants.GET_USERS);
 		try {
 			return Context.getUserService().getUserByUsername(username);
 		}
 		catch (Exception e) {
 			log.error("Could not look up the OpenMRS user named '{}'", username, e);
 			return null;
+		}
+		finally {
+			Context.removeProxyPrivilege(PrivilegeConstants.GET_USERS);
 		}
 	}
 
@@ -247,18 +215,6 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 		return new UsernamePasswordAuthenticationScheme();
 	}
 
-	private AuthenticationCredentials delegateCredentials(AuthenticationSession session) {
-		AuthenticationScheme resolved = resolveDelegate();
-
-		if (resolved instanceof WebAuthenticationScheme) {
-			return ((WebAuthenticationScheme) resolved).getCredentials(session);
-		}
-
-		// A non-web delegate has no notion of reading credentials from a request. Returning null with a
-		// null challenge URL leaves the request to the rest of the chain, which is how OpenMRS behaves
-		// with no scheme configured at all.
-		return null;
-	}
 
 	private Authenticated delegateAuthenticate(Credentials credentials) {
 		return resolveDelegate().authenticate(credentials);

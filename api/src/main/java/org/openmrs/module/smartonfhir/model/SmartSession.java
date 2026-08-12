@@ -17,4 +17,10 @@ public class SmartSession {
 	private String visitUuid;
 
 	private String patientUuid;
+
+	/**
+	 * The user this launch was created for. A launch handle is only redeemable by them, so a handle
+	 * that reaches somebody else is useless.
+	 */
+	private String username;
 }

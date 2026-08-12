@@ -42,6 +42,8 @@ public class SmartAccessTokenVerifierHolder {
 
 	private static volatile boolean attempted = false;
 
+	private static volatile String resolvedJwksUri;
+
 	/**
 	 * @return the verifier, or null if SMART is unconfigured or the authorization server's keys could not
 	 *         be located. Callers must refuse the request in that case rather than accept it unverified.
@@ -62,7 +64,19 @@ public class SmartAccessTokenVerifierHolder {
 	/** Discards the built verifier so the next call rebuilds it. For tests and for config changes. */
 	public static synchronized void reset() {
 		verifier = null;
+		resolvedJwksUri = null;
 		attempted = false;
+	}
+
+	/**
+	 * Where token signing keys are actually being fetched from, so the discovery document advertises
+	 * the same location the verifier uses rather than a second guess at it.
+	 *
+	 * @return the JWKS URI, or null if it could not be determined
+	 */
+	public static String getResolvedJwksUri() {
+		getVerifier();
+		return resolvedJwksUri;
 	}
 
 	private static void build() {
@@ -88,6 +102,7 @@ public class SmartAccessTokenVerifierHolder {
 		try {
 			JWKSource<SecurityContext> keySource = JWKSourceBuilder.create(new URL(jwksUri.trim())).retrying(true).build();
 			verifier = new SmartAccessTokenVerifier(config, keySource);
+			resolvedJwksUri = jwksUri.trim();
 			log.info("SMART access tokens will be verified against {}", jwksUri);
 		}
 		catch (Exception e) {

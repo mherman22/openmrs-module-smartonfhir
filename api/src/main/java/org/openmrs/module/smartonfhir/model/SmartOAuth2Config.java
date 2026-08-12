@@ -53,6 +53,18 @@ public class SmartOAuth2Config {
 	@JsonProperty("jwks-uri")
 	private String jwksUri;
 
+	/**
+	 * The JWKS location to publish in the SMART discovery document, when it differs from the one this
+	 * module fetches keys from.
+	 * <p>
+	 * They differ whenever the authorization server is reachable by two names. This module fetches keys
+	 * server to server and may use an internal address; an app reads the discovery document from
+	 * outside and must be given one it can resolve. Publishing the internal address produces a
+	 * discovery document that looks complete and is unusable.
+	 */
+	@JsonProperty("advertised-jwks-uri")
+	private String advertisedJwksUri;
+
 	@JsonProperty("authorization-endpoint")
 	private String authorizationEndpoint;
 

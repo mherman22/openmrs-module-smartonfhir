@@ -153,7 +153,11 @@ json.dump({
     # that hostname; but this module fetches JWKS server-to-server over the compose
     # network, where the published port does not exist.
     "issuer": browser_issuer,
+    # Keys are fetched over the compose network, where the published port does not exist.
     "jwks-uri": internal_issuer + "/protocol/openid-connect/certs",
+    # An app reads the discovery document from outside and must be given a URL it can
+    # resolve, so what is advertised is the browser-visible one.
+    "advertised-jwks-uri": browser_issuer + "/protocol/openid-connect/certs",
     "audience": audience,
     "username-claim": "preferred_username",
 }, open(target, "w"), indent=2)

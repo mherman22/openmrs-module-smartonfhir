@@ -18,8 +18,8 @@ import java.io.IOException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.openmrs.module.smartonfhir.model.SmartSession;
-import org.openmrs.module.smartonfhir.util.FhirBaseAddressStrategy;
 import org.openmrs.module.smartonfhir.util.SmartSessionCache;
+import org.openmrs.module.smartonfhir.web.util.FhirBaseAddressStrategy;
 
 public class SmartEhrLaunchServlet extends HttpServlet {
 

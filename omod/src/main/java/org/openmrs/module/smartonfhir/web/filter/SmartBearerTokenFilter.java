@@ -23,10 +23,10 @@ import java.io.IOException;
 import lombok.extern.slf4j.Slf4j;
 import org.openmrs.api.context.Context;
 import org.openmrs.api.context.ContextAuthenticationException;
+import org.openmrs.module.smartonfhir.auth.SmartBearerCredentials;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier.SmartAccessToken;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifierHolder;
-import org.openmrs.module.smartonfhir.web.smart.SmartBearerCredentials;
 
 /**
  * Authenticates FHIR requests that carry a SMART access token.

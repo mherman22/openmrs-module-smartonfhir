@@ -19,7 +19,7 @@ import java.util.Base64;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.openmrs.module.smartonfhir.web.SmartSecretKey;
+import org.openmrs.module.smartonfhir.model.SmartSecretKey;
 import org.openmrs.util.OpenmrsUtil;
 
 @Slf4j

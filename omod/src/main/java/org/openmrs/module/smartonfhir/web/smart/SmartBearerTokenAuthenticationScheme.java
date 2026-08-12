@@ -24,6 +24,8 @@ import org.openmrs.module.authentication.AuthenticationCredentials;
 import org.openmrs.module.authentication.UserLogin;
 import org.openmrs.module.authentication.web.AuthenticationSession;
 import org.openmrs.module.authentication.web.WebAuthenticationScheme;
+import org.openmrs.module.smartonfhir.auth.SmartBearerCredentials;
+import org.openmrs.module.smartonfhir.auth.SmartTokenCredentials;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier.SmartAccessToken;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifierHolder;
@@ -132,20 +134,28 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 			return delegateAuthenticate(credentials);
 		}
 
-		SmartBearerCredentials smartCredentials = (SmartBearerCredentials) credentials;
-		User user = findUser(smartCredentials.getClientName());
+		return authenticateAsNamedUser(credentials.getClientName(), credentials.getAuthenticationScheme());
+	}
+
+	/**
+	 * Maps a username onto an OpenMRS user without a password, which is only sound because the caller
+	 * has already established who the user is: {@link SmartBearerCredentials} exists only for a
+	 * verified access token, and {@link SmartTokenCredentials} only for a launch token whose HMAC
+	 * signature was checked against the shared secret.
+	 */
+	private Authenticated authenticateAsNamedUser(String username, String schemeName) {
+		User user = findUser(username);
 
 		if (user == null) {
 			// The token was valid, so the authorization server knows this person; OpenMRS does not.
 			// Refusing is the only safe answer: there is no user whose privileges could apply.
-			log.warn("A valid SMART access token named '{}', which is not an OpenMRS user",
-			    smartCredentials.getClientName());
+			log.warn("A verified SMART token named '{}', which is not an OpenMRS user", username);
 			throw new ContextAuthenticationException("Invalid credentials");
 		}
 
-		log.debug("Authenticated '{}' from a SMART access token", user.getUsername());
+		log.debug("Authenticated '{}' from a verified SMART token", user.getUsername());
 
-		return new BasicAuthenticated(user, smartCredentials.getAuthenticationScheme());
+		return new BasicAuthenticated(user, schemeName);
 	}
 
 	/**
@@ -157,6 +167,14 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 	public Authenticated authenticate(Credentials credentials) throws ContextAuthenticationException {
 		if (credentials instanceof SmartBearerCredentials) {
 			return super.authenticate(credentials);
+		}
+
+		// The launch handshake authenticates the user who is selecting a patient, via
+		// AuthenticationByPassFilter, which verifies the launch token's signature before getting here.
+		// Nothing else in the platform handles these credentials, so without this the standalone
+		// launch cannot get past patient selection.
+		if (credentials instanceof SmartTokenCredentials) {
+			return authenticateAsNamedUser(credentials.getClientName(), credentials.getAuthenticationScheme());
 		}
 
 		return delegateAuthenticate(credentials);

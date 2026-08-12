@@ -18,7 +18,7 @@ import java.nio.file.Paths;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.openmrs.module.smartonfhir.web.SmartOAuth2Config;
+import org.openmrs.module.smartonfhir.model.SmartOAuth2Config;
 import org.openmrs.util.OpenmrsUtil;
 
 /**

@@ -32,9 +32,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.openmrs.api.context.Context;
 import org.openmrs.api.context.ContextAuthenticationException;
+import org.openmrs.module.smartonfhir.auth.SmartTokenCredentials;
 import org.openmrs.module.smartonfhir.util.SmartLaunchTokens;
 import org.openmrs.module.smartonfhir.util.SmartSecretKeyHolder;
-import org.openmrs.module.smartonfhir.web.smart.SmartTokenCredentials;
 
 @Slf4j
 public class AuthenticationByPassFilter implements Filter {

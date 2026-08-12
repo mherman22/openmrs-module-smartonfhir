@@ -96,8 +96,14 @@ public class SmartConfigServlet extends HttpServlet {
 		conformance.setGrantTypesSupported(new String[] { "authorization_code", "refresh_token" });
 		// SMART App Launch 2.x mandates S256 and forbids plain, so only S256 is offered.
 		conformance.setCodeChallengeMethodsSupported(new String[] { "S256" });
-		conformance.setScopesSupported(new String[] { "openid", "fhirUser", "launch", "launch/patient", "launch/encounter",
-		        "patient/*.rs", "user/*.rs", "offline_access" });
+		// Only scopes the authorization server will actually grant. The wildcard forms were advertised
+		// here for a while and answered invalid_scope, because expanding them is the authorization
+		// server's job and Keycloak does not: a scope has to exist as a client scope to be requestable.
+		// launch/encounter is advertised because the scope is granted; what it needs and does not have
+		// is a visit-selection screen.
+		conformance.setScopesSupported(new String[] { "openid", "profile", "fhirUser", "launch", "launch/patient",
+		        "launch/encounter", "patient/Patient.rs", "patient/Observation.rs", "patient/Condition.rs",
+		        "patient/Encounter.rs", "offline_access" });
 		conformance.setResponseTypesSupported(new String[] { "code" });
 		conformance.setCapabilities(CAPABILITIES);
 

@@ -131,14 +131,59 @@ json.dump({
 PYCFG
 note "wrote target/openmrs-config/smart-oauth2.json (issuer/audience matched to the realm)"
 
+# Registers the bearer scheme with the authentication module. The module instantiates
+# it by reflection from this property, so it never becomes a second Spring
+# AuthenticationScheme bean -- which core would reject, disabling both it and the
+# module's own scheme. No delegate is set, so non-bearer credentials go to the
+# platform's username/password scheme: exactly what RefApp 3.7.1 does today.
+cat > "$HERE/target/openmrs-config/authentication-runtime.properties" <<'PROPS'
+authentication.scheme=smartBearer
+authentication.scheme.smartBearer.type=org.openmrs.module.smartonfhir.web.smart.SmartBearerTokenAuthenticationScheme
+# Reload settings per request rather than caching them at startup. Without this the
+# module resolves the scheme from a config snapshot taken before this file is read, and
+# silently falls back to the platform default.
+authentication.settings.cached=false
+PROPS
+note "wrote target/openmrs-config/authentication-runtime.properties (registers the bearer scheme)"
+
+# ----------------------------------------------------------------- module staging
+
+log "Staging the module"
+mkdir -p "$HERE/target/modules"
+STAGED_OMOD="$HERE/target/modules/smartonfhir.omod"
+BUILT_OMOD="${SMARTONFHIR_OMOD_SOURCE:-$HERE/../omod/target/smartonfhir-2.0.0-SNAPSHOT.omod}"
+
+if [ -f "$BUILT_OMOD" ]; then
+  # cp, never mv: a bind mount of a single file follows the inode, and replacing the file
+  # would leave the container reading the old one. Copying onto the existing path keeps it.
+  cp "$BUILT_OMOD" "$STAGED_OMOD"
+  note "staged $(basename "$BUILT_OMOD")"
+  OMOD_CHANGED=1
+elif [ -f "$STAGED_OMOD" ]; then
+  note "no freshly built omod; keeping the staged one"
+  OMOD_CHANGED=0
+else
+  die "no module to stage. Build it first:
+  (cd .. && mvn clean install)"
+fi
+
 # ------------------------------------------------------------------------ compose
 
 log "Starting the stack"
 export REFAPP_TAG="${REFAPP_TAG:-3.7.1}"
 export KEYCLOAK_TAG="${KEYCLOAK_TAG:-26.7.1}"
 export SMART_AUTH_JAR="$JAR_PATH"
+export SMARTONFHIR_OMOD="$STAGED_OMOD"
 export OPENMRS_PORT KEYCLOAK_PORT
 docker compose up -d
+
+# OpenMRS loads modules at startup, so a new omod needs a restart. compose will not
+# recreate the container by itself: the service definition has not changed, only the
+# file the mount points at.
+if [ "$OMOD_CHANGED" = 1 ]; then
+  note "restarting OpenMRS to load the staged module"
+  docker compose restart backend >/dev/null
+fi
 
 log "Waiting for Keycloak"
 for i in $(seq 1 60); do
@@ -150,7 +195,12 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-if docker compose logs keycloak 2>&1 | grep -q "Realm 'openmrs' imported"; then
+imported=0
+for _ in $(seq 1 15); do
+  if docker compose logs keycloak 2>&1 | grep -q "Realm 'openmrs' imported"; then imported=1; break; fi
+  sleep 2
+done
+if [ "$imported" = 1 ]; then
   note "realm 'openmrs' imported"
 else
   die "keycloak started but did not import the realm; check: docker compose logs keycloak"

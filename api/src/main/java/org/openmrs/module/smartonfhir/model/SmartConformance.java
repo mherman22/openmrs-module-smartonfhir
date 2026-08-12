@@ -46,4 +46,25 @@ public class SmartConformance {
 
 	@JsonProperty(value = "capabilities", required = true)
 	private String[] capabilities;
+
+	/**
+	 * REQUIRED by SMART App Launch 2.x. Its absence is a conformance failure in its own right, and an
+	 * app has no way to discover which authorization server issued the tokens it is validating.
+	 */
+	@JsonProperty(value = "issuer", required = true)
+	private String issuer;
+
+	/** REQUIRED by SMART App Launch 2.x, so an app can verify token signatures itself. */
+	@JsonProperty(value = "jwks_uri", required = true)
+	private String jwksUri;
+
+	@JsonProperty(value = "grant_types_supported", required = true)
+	private String[] grantTypesSupported;
+
+	/**
+	 * REQUIRED by SMART App Launch 2.x, which mandates S256 and forbids {@code plain}. Advertising it
+	 * is how an app knows PKCE is available at all.
+	 */
+	@JsonProperty(value = "code_challenge_methods_supported", required = true)
+	private String[] codeChallengeMethodsSupported;
 }

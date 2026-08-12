@@ -19,12 +19,30 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.openmrs.module.smartonfhir.model.SmartConformance;
 import org.openmrs.module.smartonfhir.model.SmartOAuth2Config;
+import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifierHolder;
 import org.openmrs.module.smartonfhir.util.SmartOAuth2ConfigHolder;
 
 @Slf4j
 public class SmartConfigServlet extends HttpServlet {
 
 	private static final ObjectMapper objectMapper = new ObjectMapper();
+
+	/**
+	 * Only what this server can actually do. A discovery document is a contract, and an app that
+	 * believes an unimplemented capability fails in a way that looks like the app's fault.
+	 * <p>
+	 * Deliberately absent:
+	 * <ul>
+	 * <li>{@code launch-standalone} and {@code context-standalone-patient}, because standalone launch
+	 * needs a patient-selection screen and there is not one yet. They belong here the moment there
+	 * is.</li>
+	 * <li>{@code permission-v2}, because granular scopes are parsed but not enforced. Enforcement
+	 * belongs in the FHIR resource providers, not in this module.</li>
+	 * </ul>
+	 */
+	private static final String[] CAPABILITIES = new String[] { "launch-ehr", "client-public",
+	        "client-confidential-symmetric", "context-ehr-patient", "context-ehr-encounter", "permission-patient",
+	        "permission-user", "sso-openid-connect" };
 
 	private SmartConformance smartConformance;
 
@@ -62,12 +80,19 @@ public class SmartConfigServlet extends HttpServlet {
 		        .setRevocationEndpoint(orDerived(config.getRevocationEndpoint(), issuer, "/protocol/openid-connect/revoke"));
 		conformance.setRegistrationEndpoint(config.getRegistrationEndpoint());
 		conformance.setTokenEndpointAuthMethodsSupported(new String[] { "client_secret_basic", "private_key_jwt" });
+		conformance.setIssuer(issuer);
+		// What an app is told, which is not necessarily where we fetch keys from: see
+		// SmartOAuth2Config.advertisedJwksUri.
+		conformance.setJwksUri(config.getAdvertisedJwksUri() != null && !config.getAdvertisedJwksUri().trim().isEmpty()
+		        ? config.getAdvertisedJwksUri().trim()
+		        : SmartAccessTokenVerifierHolder.getResolvedJwksUri());
+		conformance.setGrantTypesSupported(new String[] { "authorization_code", "refresh_token" });
+		// SMART App Launch 2.x mandates S256 and forbids plain, so only S256 is offered.
+		conformance.setCodeChallengeMethodsSupported(new String[] { "S256" });
 		conformance.setScopesSupported(new String[] { "openid", "fhirUser", "launch", "launch/patient", "launch/encounter",
 		        "patient/*.rs", "user/*.rs", "offline_access" });
 		conformance.setResponseTypesSupported(new String[] { "code" });
-		conformance.setCapabilities(new String[] { "launch-ehr", "launch-standalone", "client-public",
-		        "client-confidential-symmetric", "context-ehr-patient", "context-ehr-encounter",
-		        "context-standalone-patient", "permission-patient", "permission-user", "sso-openid-connect" });
+		conformance.setCapabilities(CAPABILITIES);
 
 		return conformance;
 	}

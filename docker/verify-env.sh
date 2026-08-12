@@ -92,7 +92,8 @@ else
 fi
 
 step "The SMART discovery document"
-DISCO="$(curl -sL --max-time 20 "$OPENMRS/ws/fhir2/R4/.well-known/smart-configuration" 2>/dev/null)"
+DISCO_SMART="$(curl -sL --max-time 20 "$OPENMRS/ws/fhir2/R4/.well-known/smart-configuration" 2>/dev/null)"
+DISCO="$DISCO_SMART"
 got="$(printf '%s' "$DISCO" | python3 -c "
 import sys,json
 try:
@@ -102,6 +103,56 @@ except Exception:
 missing=[k for k in ('authorization_endpoint','token_endpoint','capabilities','scopes_supported') if not d.get(k)]
 print('complete' if not missing else 'missing: %s' % missing)")"
 check "the module serves a discovery document" "$got" "complete"
+
+# Every field SMART App Launch 2.x marks REQUIRED. Absence is a conformance failure, and an
+# app cannot discover PKCE support or which keys to trust.
+got="$(printf '%s' "$DISCO_SMART" | python3 -c "
+import sys,json
+try: d=json.load(sys.stdin)
+except Exception: print('unparseable'); raise SystemExit
+need=('issuer','jwks_uri','authorization_endpoint','token_endpoint','grant_types_supported',
+      'capabilities','code_challenge_methods_supported')
+missing=[k for k in need if not d.get(k)]
+print('all' if not missing else 'missing: %s' % missing)")"
+check "every SMART 2.x required field is present" "$got" "all"
+
+check "PKCE advertises S256 and nothing weaker" "$(printf '%s' "$DISCO_SMART" | python3 -c "
+import sys,json
+try: d=json.load(sys.stdin)
+except Exception: print('unparseable'); raise SystemExit
+m=d.get('code_challenge_methods_supported',[])
+print('S256-only' if m==['S256'] else 'unexpected: %s' % m)")" "S256-only"
+
+# A discovery document is a contract. Advertising a flow with no patient-selection screen
+# makes an app fail in a way that looks like the app's fault.
+check "no capability is advertised that is not implemented" "$(printf '%s' "$DISCO_SMART" | python3 -c "
+import sys,json
+try: d=json.load(sys.stdin)
+except Exception: print('unparseable'); raise SystemExit
+caps=set(d.get('capabilities',[]))
+over=caps & {'launch-standalone','context-standalone-patient','permission-v2'}
+print('honest' if not over else 'overclaimed: %s' % sorted(over))")" "honest"
+
+# The keys an app is told to verify with must be fetchable from where the app runs, not only
+# from inside the compose network.
+ADVERTISED_JWKS="$(printf '%s' "$DISCO_SMART" | python3 -c "
+import sys,json
+try: print(json.load(sys.stdin).get('jwks_uri',''))
+except Exception: print('')")"
+if [ -n "$ADVERTISED_JWKS" ]; then
+  keys="$(curl -s --max-time 20 "$ADVERTISED_JWKS" 2>/dev/null | python3 -c "
+import sys,json
+try: print(len(json.load(sys.stdin).get('keys',[])))
+except Exception: print(0)")"
+  if [ "${keys:-0}" -gt 0 ]; then
+    pass "the advertised signing keys are fetchable from outside the containers ($keys keys)"
+  else
+    fail "the advertised signing keys are fetchable from outside the containers" \
+         "$ADVERTISED_JWKS returned no keys, so an app cannot verify tokens"
+  fi
+else
+  fail "the discovery document advertises a jwks_uri" "none present"
+fi
 
 # The endpoints an app is told to use must be ones a browser can reach, not
 # container-internal hostnames.
@@ -117,10 +168,12 @@ got="$(printf '%s' "$DISCO" | python3 -c "
 import sys,json
 try: d=json.load(sys.stdin)
 except Exception: print('unparseable'); raise SystemExit
-want={'launch-ehr','launch-standalone','context-ehr-patient','context-standalone-patient'}
+# Only the flows that work. Standalone launch is absent on purpose until there is a
+# patient-selection screen; the overclaim check above is what keeps that honest.
+want={'launch-ehr','context-ehr-patient','context-ehr-encounter','sso-openid-connect'}
 have=set(d.get('capabilities',[]))
 print('all' if want.issubset(have) else 'missing: %s' % sorted(want-have))")"
-check "the launch capabilities are advertised" "$got" "all"
+check "the implemented launch capabilities are advertised" "$got" "all"
 
 step "The audience validator decides launches on the aud parameter"
 PKCE="code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"

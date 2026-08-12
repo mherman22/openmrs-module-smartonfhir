@@ -20,13 +20,13 @@ import org.openmrs.api.context.Context;
 import org.openmrs.api.context.ContextAuthenticationException;
 import org.openmrs.api.context.Credentials;
 import org.openmrs.api.context.UsernamePasswordAuthenticationScheme;
-import org.openmrs.util.PrivilegeConstants;
 import org.openmrs.module.authentication.AuthenticationCredentials;
 import org.openmrs.module.authentication.UserLogin;
 import org.openmrs.module.authentication.web.AuthenticationSession;
 import org.openmrs.module.authentication.web.WebAuthenticationScheme;
 import org.openmrs.module.smartonfhir.auth.SmartBearerCredentials;
 import org.openmrs.module.smartonfhir.auth.SmartTokenCredentials;
+import org.openmrs.util.PrivilegeConstants;
 
 /**
  * Authenticates FHIR requests that present a SMART access token, and stays out of the way
@@ -76,8 +76,8 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 	 * <p>
 	 * It is registered so that {@link Context#authenticate} can route SMART credentials here, not so
 	 * that the authentication module's filter can drive a login. Returning credentials from here makes
-	 * that filter authenticate the request itself and then issue its interactive-login success
-	 * redirect -- a 302 where a FHIR client expects its data. Reading the bearer header is
+	 * that filter authenticate the request itself and then issue its interactive-login success redirect
+	 * -- a 302 where a FHIR client expects its data. Reading the bearer header is
 	 * {@code SmartBearerTokenFilter}'s job, scoped to the FHIR paths, and it authenticates by calling
 	 * {@link Context#authenticate}, which arrives at {@link #authenticate(Credentials)} below.
 	 */
@@ -153,7 +153,6 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 		return false;
 	}
 
-
 	/**
 	 * Looks up the OpenMRS user a verified token names.
 	 * <p>
@@ -163,8 +162,8 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 	 * the platform's own idiom for a lookup that has to happen in order to authenticate at all. It is
 	 * granted around this one call and removed in a finally block, so it cannot leak into the request.
 	 * <p>
-	 * The lookup matches username or systemId, which matters because OpenMRS's own {@code admin} account
-	 * has a null username and is identified by its systemId.
+	 * The lookup matches username or systemId, which matters because OpenMRS's own {@code admin}
+	 * account has a null username and is identified by its systemId.
 	 */
 	private User findUser(String username) {
 		Context.addProxyPrivilege(PrivilegeConstants.GET_USERS);
@@ -214,7 +213,6 @@ public class SmartBearerTokenAuthenticationScheme extends WebAuthenticationSchem
 
 		return new UsernamePasswordAuthenticationScheme();
 	}
-
 
 	private Authenticated delegateAuthenticate(Credentials credentials) {
 		return resolveDelegate().authenticate(credentials);

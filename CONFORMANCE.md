@@ -15,7 +15,7 @@ implement fails in a way that looks like the app's fault.
 |---|---|---|
 | Register app (redirect URIs, launch URL) | **Manual** | No dynamic client registration. `registration_endpoint` is advertised only if configured. |
 | Standalone launch | **Yes** | Walked end to end in a browser, including patient selection. |
-| EHR launch | **No** | Plumbing exists and is spec-shaped (`iss` + `launch`), but the authorization server resolves the user as the literal `admin`, and OpenMRS has no app registry or launch affordance. Must not be used. |
+| EHR launch | **Protocol yes, product no** | Walked end to end: the EHR notifies the app with `iss` and `launch`, the handle is redeemed against the clinician's OpenMRS session with no password prompt, and the token response carries the patient the EHR launched for. What is missing is around it — no app registry, so the launch URL comes from a request parameter and the servlet will redirect anywhere; and no affordance in O3, so a clinician cannot start one. |
 | `.well-known/smart-configuration` | **Yes** | All SMART 2.x required fields present. |
 | Authorization code flow | **Yes** | |
 | PKCE, `S256` required, `plain` refused | **Yes** | `code_challenge_methods_supported` is `["S256"]` only. |
@@ -38,7 +38,7 @@ implement fails in a way that looks like the app's fault.
 |---|---|---|
 | `launch/patient` | **Yes** | Produces the patient-selection screen and returns `patient`. |
 | `launch/encounter` | **No** | The visit-selection screen was removed with the RefApp 2.x UI; the servlet still redirects to a page that no longer exists. |
-| `launch` (EHR context) | **Blocked** | Depends on EHR launch. |
+| `launch` (EHR context) | **Yes** | The scope carries both context mappers. It carried none for a while, so an EHR launch completed and returned no patient at all. |
 | v2 granular scope **syntax** (`patient/Observation.rs`) | **Yes** | Parsed, granted, returned in `scope`. |
 | v2 granular scope **enforcement** | **No** | The resource server does not restrict requests by scope; the user's OpenMRS privileges are the boundary. `permission-v2` is therefore not advertised. |
 | `patient/*.rs`, `user/*.rs` wildcards | **No** | Expanding a wildcard is the authorization server's job and Keycloak does not do it: a scope must exist as a client scope to be requestable, and both forms answer `invalid_scope`. They were advertised in `scopes_supported` until that was measured; the advertisement has been removed rather than the truth adjusted. |

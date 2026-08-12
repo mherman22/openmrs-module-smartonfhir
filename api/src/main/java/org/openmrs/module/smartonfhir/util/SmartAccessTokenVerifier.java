@@ -24,7 +24,7 @@ import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
 import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier;
 import com.nimbusds.jwt.proc.DefaultJWTProcessor;
 import lombok.extern.slf4j.Slf4j;
-import org.openmrs.module.smartonfhir.web.SmartOAuth2Config;
+import org.openmrs.module.smartonfhir.model.SmartOAuth2Config;
 
 /**
  * Verifies the SMART access tokens presented on FHIR requests.

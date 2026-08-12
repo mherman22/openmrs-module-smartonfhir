@@ -17,9 +17,9 @@ import java.io.IOException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.openmrs.module.smartonfhir.model.SmartConformance;
+import org.openmrs.module.smartonfhir.model.SmartOAuth2Config;
 import org.openmrs.module.smartonfhir.util.SmartOAuth2ConfigHolder;
-import org.openmrs.module.smartonfhir.web.SmartConformance;
-import org.openmrs.module.smartonfhir.web.SmartOAuth2Config;
 
 @Slf4j
 public class SmartConfigServlet extends HttpServlet {

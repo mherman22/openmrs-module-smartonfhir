@@ -37,8 +37,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.openmrs.module.smartonfhir.model.SmartOAuth2Config;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier.SmartAccessToken;
-import org.openmrs.module.smartonfhir.web.SmartOAuth2Config;
 
 /**
  * This is the gate on the FHIR API: whatever it accepts becomes an authenticated OpenMRS user. The

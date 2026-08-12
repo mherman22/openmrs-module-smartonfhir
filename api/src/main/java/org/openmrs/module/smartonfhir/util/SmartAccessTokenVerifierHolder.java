@@ -19,7 +19,7 @@ import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.jwk.source.JWKSourceBuilder;
 import com.nimbusds.jose.proc.SecurityContext;
 import lombok.extern.slf4j.Slf4j;
-import org.openmrs.module.smartonfhir.web.SmartOAuth2Config;
+import org.openmrs.module.smartonfhir.model.SmartOAuth2Config;
 
 /**
  * Builds the {@link SmartAccessTokenVerifier} once and hands it out.

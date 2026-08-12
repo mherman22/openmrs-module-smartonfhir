@@ -44,6 +44,16 @@ public class SmartConformance {
 	@JsonProperty("revocation_endpoint")
 	private String revocationEndpoint;
 
+	/**
+	 * Where an app sends the clinician to end their session with the authorization server.
+	 * <p>
+	 * Without this an app has no discoverable way to log anybody out, and ending an OpenMRS session
+	 * alone leaves the authorization server's own session intact: the next launch in that browser is
+	 * then granted silently, as the previous clinician.
+	 */
+	@JsonProperty("end_session_endpoint")
+	private String endSessionEndpoint;
+
 	@JsonProperty(value = "capabilities", required = true)
 	private String[] capabilities;
 

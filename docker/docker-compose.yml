@@ -69,8 +69,6 @@ services:
       # secret. Both agree with the rendered realm by construction.
       - ./target/openmrs-config/smart-oauth2.json:/openmrs/data/config/smart-oauth2.json:ro
       - ./target/openmrs-config/smart-secret-key.json:/openmrs/data/config/smart-secret-key.json:ro
-      # Read by the authentication module to instantiate the bearer scheme.
-      - ./target/openmrs-config/authentication-runtime.properties:/openmrs/data/authentication-runtime.properties:ro
 
   db:
     image: mariadb:10.11.7

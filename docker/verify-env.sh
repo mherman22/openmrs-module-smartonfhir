@@ -196,6 +196,48 @@ else
 fi
 rm -f "$OMRS_LOG2"
 
+step "A genuine Keycloak token reads FHIR data"
+# The end-to-end case. Everything above proves bad tokens are refused, which is the easier
+# half; this proves a real one is accepted and maps to an OpenMRS user.
+DEV_USER="${SMART_DEV_USER:-doctor}"
+DEV_PASSWORD="${SMART_DEV_PASSWORD:-Smart123}"
+TOKEN_JSON="$(curl -s --max-time 30 -X POST "$KC/realms/openmrs/protocol/openid-connect/token" \
+  -d client_id=smartClient -d grant_type=password -d "username=$DEV_USER" -d "password=$DEV_PASSWORD" \
+  -d "scope=openid profile fhirUser launch" 2>/dev/null)"
+ACCESS_TOKEN="$(printf '%s' "$TOKEN_JSON" | python3 -c "
+import sys,json
+try: print(json.load(sys.stdin).get('access_token',''))
+except Exception: print('')")"
+
+if [ -z "$ACCESS_TOKEN" ]; then
+  fail "an access token can be obtained for $DEV_USER" \
+       "$(printf '%s' "$TOKEN_JSON" | head -c 160)"
+else
+  pass "an access token was obtained for $DEV_USER"
+
+  # aud must name this FHIR server or the module refuses the token, and the username claim
+  # is what it maps onto an OpenMRS user.
+  claims="$(printf '%s' "$ACCESS_TOKEN" | python3 -c "
+import sys,json,base64
+p=sys.stdin.read().split('.')[1]; p+='='*(-len(p)%4)
+c=json.loads(base64.urlsafe_b64decode(p))
+aud=c.get('aud'); aud=aud if isinstance(aud,list) else [aud]
+print('%s|%s' % ('yes' if '$OPENMRS/ws/fhir2/R4' in aud else 'no', c.get('preferred_username')))")"
+  check "the token names this FHIR server in aud" "${claims%%|*}" "yes"
+  check "the token names the expected user"       "${claims##*|}" "$DEV_USER"
+
+  BODY="$(mktemp)"
+  code="$(curl -s -o "$BODY" -w '%{http_code}' --max-time 30 \
+    -H "Authorization: Bearer $ACCESS_TOKEN" "$OPENMRS/ws/fhir2/R4/Patient?_count=1" 2>/dev/null || echo 000)"
+  check "the FHIR API accepts it" "$code" "200"
+  got="$(python3 -c "
+import json,sys
+try: print(json.load(open('$BODY')).get('resourceType',''))
+except Exception: print('unparseable')")"
+  check "and answers with a FHIR Bundle" "$got" "Bundle"
+  rm -f "$BODY"
+fi
+
 step "Result"
 if [ "$FAILURES" -eq 0 ]; then
   echo "  the environment is ready for SMART launch development"

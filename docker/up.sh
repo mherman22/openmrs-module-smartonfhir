@@ -131,20 +131,7 @@ json.dump({
 PYCFG
 note "wrote target/openmrs-config/smart-oauth2.json (issuer/audience matched to the realm)"
 
-# Registers the bearer scheme with the authentication module. The module instantiates
-# it by reflection from this property, so it never becomes a second Spring
-# AuthenticationScheme bean -- which core would reject, disabling both it and the
-# module's own scheme. No delegate is set, so non-bearer credentials go to the
-# platform's username/password scheme: exactly what RefApp 3.7.1 does today.
-cat > "$HERE/target/openmrs-config/authentication-runtime.properties" <<'PROPS'
-authentication.scheme=smartBearer
-authentication.scheme.smartBearer.type=org.openmrs.module.smartonfhir.web.smart.SmartBearerTokenAuthenticationScheme
-# Reload settings per request rather than caching them at startup. Without this the
-# module resolves the scheme from a config snapshot taken before this file is read, and
-# silently falls back to the platform default.
-authentication.settings.cached=false
-PROPS
-note "wrote target/openmrs-config/authentication-runtime.properties (registers the bearer scheme)"
+
 
 # ----------------------------------------------------------------- module staging
 
@@ -170,6 +157,9 @@ fi
 # ------------------------------------------------------------------------ compose
 
 log "Starting the stack"
+# Noted before starting: a container that compose creates fresh already reads the current
+# mounts, and restarting one mid-first-start interrupts OpenMRS's database initialisation.
+BACKEND_ID_BEFORE="$(docker compose ps -q backend 2>/dev/null || true)"
 export REFAPP_TAG="${REFAPP_TAG:-3.7.1}"
 export KEYCLOAK_TAG="${KEYCLOAK_TAG:-26.7.1}"
 export SMART_AUTH_JAR="$JAR_PATH"
@@ -177,12 +167,24 @@ export SMARTONFHIR_OMOD="$STAGED_OMOD"
 export OPENMRS_PORT KEYCLOAK_PORT
 docker compose up -d
 
-# OpenMRS loads modules at startup, so a new omod needs a restart. compose will not
-# recreate the container by itself: the service definition has not changed, only the
-# file the mount points at.
-if [ "$OMOD_CHANGED" = 1 ]; then
+# Keycloak is recreated every run. It holds no durable state by design, and realm import
+# uses IGNORE_EXISTING: against a container whose realm already exists, an edited realm is
+# silently ignored. Recreating it is what makes a realm change take effect at all. The
+# database and OpenMRS data are untouched.
+note "recreating Keycloak so the realm is imported fresh"
+docker compose up -d --force-recreate keycloak >/dev/null
+
+# OpenMRS loads modules at startup, so a newly staged omod needs a restart -- but only if
+# the container was already running. compose will not recreate it for a changed mount
+# target, yet a container it did just create has the new file already. Restarting a
+# freshly started OpenMRS interrupts its first-run database initialisation and leaves the
+# webapp undeployable.
+BACKEND_ID_AFTER="$(docker compose ps -q backend 2>/dev/null || true)"
+if [ "$OMOD_CHANGED" = 1 ] && [ -n "$BACKEND_ID_BEFORE" ] && [ "$BACKEND_ID_BEFORE" = "$BACKEND_ID_AFTER" ]; then
   note "restarting OpenMRS to load the staged module"
   docker compose restart backend >/dev/null
+else
+  note "OpenMRS started fresh; it already has the staged module"
 fi
 
 log "Waiting for Keycloak"
@@ -206,6 +208,49 @@ else
   die "keycloak started but did not import the realm; check: docker compose logs keycloak"
 fi
 
+# --------------------------------------------------------- development affordances
+#
+# Applied at runtime, never committed to the realm, so the realm template stays
+# production-shaped: no direct-grant client and no user credentials in version control.
+
+log "Adding development-only access to Keycloak"
+SMART_DEV_USER="${SMART_DEV_USER:-doctor}"
+SMART_DEV_PASSWORD="${SMART_DEV_PASSWORD:-Smart123}"
+
+kcadm() { docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@" 2>/dev/null; }
+kcadm config credentials --server http://localhost:8080 --realm master --user "${KEYCLOAK_ADMIN:-admin}" \
+  --password "${KEYCLOAK_ADMIN_PASSWORD:-admin}" >/dev/null \
+  || die "could not authenticate kcadm inside the Keycloak container"
+
+# Direct access grants let a test obtain a token without driving a browser. Enabled on
+# smartClient itself rather than on a separate client, so what is exercised is the same
+# client configuration a deployment uses, minus this one flag.
+CLIENT_UUID="$(kcadm get clients -r openmrs -q clientId=smartClient --fields id --format csv --noquotes | head -1 | tr -d '\r')"
+if [ -n "$CLIENT_UUID" ]; then
+  kcadm update "clients/$CLIENT_UUID" -r openmrs -s directAccessGrantsEnabled=true >/dev/null \
+    && note "enabled direct access grants on smartClient (development only)"
+else
+  die "smartClient not found in the openmrs realm"
+fi
+
+# A Keycloak user whose name matches an OpenMRS user. Until the user-federation provider
+# is ported, Keycloak has no knowledge of OpenMRS users, so the two are lined up by hand
+# here. 'doctor' is a clinician in the RefApp demo data, which is what a SMART launch
+# actually involves.
+if kcadm get users -r openmrs -q "username=$SMART_DEV_USER" --fields username --format csv --noquotes | grep -q "$SMART_DEV_USER"; then
+  note "keycloak user '$SMART_DEV_USER' already present"
+else
+  kcadm create users -r openmrs -s "username=$SMART_DEV_USER" -s enabled=true \
+    -s "firstName=Demo" -s "lastName=Clinician" \
+    -s "email=${SMART_DEV_USER}@example.org" -s emailVerified=true >/dev/null \
+    && note "created keycloak user '$SMART_DEV_USER'"
+  # The email is not decoration. Keycloak runs VERIFY_PROFILE conditionally on an incomplete
+  # profile, so a user without one is rejected as "Account is not fully set up" -- and nothing
+  # appears in the user's requiredActions to explain why.
+fi
+kcadm set-password -r openmrs --username "$SMART_DEV_USER" --new-password "$SMART_DEV_PASSWORD" >/dev/null \
+  && note "set its password (development only)"
+
 log "Waiting for OpenMRS (first start builds the database and can take minutes)"
 for i in $(seq 1 120); do
   state="$(docker compose ps backend --format '{{.Health}}' 2>/dev/null || true)"
@@ -213,6 +258,52 @@ for i in $(seq 1 120); do
   [ "$i" = 120 ] && { docker compose logs backend | tail -25; die "openmrs did not become healthy"; }
   sleep 5
 done
+
+# ------------------------------------------------- authentication module settings
+#
+# The authentication module reads its settings from openmrs-runtime.properties, filtered
+# by the "authentication." prefix -- not from a file of its own. reloadConfigFromRuntimeProperties
+# takes the application name and uses the prefix as a key filter, so a separate
+# authentication-runtime.properties is never consulted. This is therefore also the
+# instruction for a real deployment: put these lines in openmrs-runtime.properties.
+#
+# The file is generated by the image on first initialisation, so it can only be amended
+# once OpenMRS has started once. Appending is idempotent.
+
+log "Registering the bearer scheme with the authentication module"
+RUNTIME_PROPS=/openmrs/data/openmrs-runtime.properties
+SCHEME_CLASS=org.openmrs.module.smartonfhir.web.smart.SmartBearerTokenAuthenticationScheme
+
+if docker compose exec -T --user root backend sh -c "grep -q '^authentication.scheme=' $RUNTIME_PROPS" 2>/dev/null; then
+  note "already registered"
+else
+  docker compose exec -T --user root backend sh -c "cat >> $RUNTIME_PROPS <<'PROPS'
+
+# SMART on FHIR: authenticate FHIR requests carrying a SMART access token. Non-bearer
+# credentials fall through to the platform's username/password scheme, so ordinary
+# logins are unaffected.
+authentication.scheme=smartBearer
+authentication.scheme.smartBearer.type=$SCHEME_CLASS
+# Everything is whitelisted, deliberately. The scheme is registered so that
+# Context.authenticate can route SMART credentials to it -- not to make the
+# authentication module the gatekeeper for the webapp. Its filter is mapped to /* and,
+# for any non-whitelisted request from an unauthenticated caller, calls
+# handleAuthenticationFailure even when the scheme offers no challenge URL; on the
+# OpenMRS root that produces a redirect loop. Whether to enforce authentication centrally
+# is an implementer's decision, and turning it on is not this module's business.
+authentication.whiteList=/*
+PROPS" || die "could not amend $RUNTIME_PROPS"
+  note "added authentication.scheme=smartBearer to openmrs-runtime.properties"
+
+  note "restarting OpenMRS to pick it up"
+  docker compose restart backend >/dev/null
+  for i in $(seq 1 120); do
+    [ "$(docker compose ps backend --format '{{.Health}}' 2>/dev/null)" = "healthy" ] && break
+    [ "$i" = 120 ] && die "openmrs did not come back healthy"
+    sleep 5
+  done
+  note "openmrs healthy again"
+fi
 
 log "Ready"
 cat <<EOF
@@ -222,6 +313,8 @@ cat <<EOF
     SMART discovery  ${OPENMRS_BASE_URL}/ws/fhir2/R4/.well-known/smart-configuration
     Keycloak admin   http://localhost:${KEYCLOAK_PORT}  (${KEYCLOAK_ADMIN:-admin}/${KEYCLOAK_ADMIN_PASSWORD:-admin})
     Realm            http://localhost:${KEYCLOAK_PORT}/realms/openmrs/.well-known/openid-configuration
+
+    Dev login        ${SMART_DEV_USER:-doctor} / ${SMART_DEV_PASSWORD:-Smart123}  (matches an OpenMRS demo user)
 
     Verify the environment:  ./verify-env.sh
     Stop:                    ./up.sh --down

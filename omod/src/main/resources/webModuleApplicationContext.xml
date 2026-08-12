@@ -16,7 +16,19 @@
   		    http://www.springframework.org/schema/context
   		    http://www.springframework.org/schema/context/spring-context-3.0.xsd">
 
-	<context:component-scan base-package="org.openmrs.module.smartonfhir.web"/>
+	<!--
+		Scanning must not register a bean of type org.openmrs.api.context.AuthenticationScheme.
+		OpenMRS core permits exactly one: Context.setAuthenticationScheme() calls
+		getBean(AuthenticationScheme.class) and, finding more than one, logs "Multiple
+		authentication schemes overrides are being provided" and falls back to the platform
+		default, disabling every candidate. That includes the authentication module's own
+		scheme, which RefApp 3.7.1 relies on. SmartBearerTokenAuthenticationScheme is
+		therefore instantiated by the authentication module from
+		authentication.scheme.{id}.type, not by Spring.
+	-->
+	<context:component-scan base-package="org.openmrs.module.smartonfhir.web">
+		<context:exclude-filter type="assignable" expression="org.openmrs.api.context.AuthenticationScheme"/>
+	</context:component-scan>
 	<!-- The uiframework StandardModuleUiConfiguration bean is gone with the RefApp 2.x
 	     pages it served; uiframework is not part of RefApp 3.x. -->
 

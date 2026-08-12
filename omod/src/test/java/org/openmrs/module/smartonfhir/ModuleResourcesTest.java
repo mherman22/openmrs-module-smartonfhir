@@ -98,9 +98,7 @@ class ModuleResourcesTest {
 	@Test
 	@DisplayName("the module config declares only dependencies RefApp 3.7.1 actually ships")
 	void requiredModulesAreAvailableInTheDistribution() throws IOException {
-		Path config = xmlResources().stream().filter(p -> p.getFileName().toString().equals("config.xml")).findFirst()
-		        .orElseThrow(() -> new AssertionError("config.xml not found"));
-		String contents = new String(Files.readAllBytes(config), StandardCharsets.UTF_8);
+		String contents = configXml();
 
 		// A require_module OpenMRS cannot satisfy prevents this module from starting at all.
 		Matcher matcher = Pattern.compile("<require_module[^>]*>([^<]+)</require_module>").matcher(contents);
@@ -116,5 +114,81 @@ class ModuleResourcesTest {
 			    "config.xml requires '" + module + "', which is not part of RefApp 3.7.1. The RefApp 2.x UI modules "
 			            + "in particular (uiframework, appframework, coreapps, appui) are absent from 3.x.");
 		}
+	}
+
+	/**
+	 * The authentication bypass filter keeps its bypass-eligible URLs in two places that have to agree:
+	 * the servlet mappings decide which requests it sees at all, and its {@code validUrls} init-param
+	 * decides which of those may present a launch token. A URL in only one of the two fails quietly —
+	 * mapped but not valid means the filter runs and refuses to read the token, and valid but not
+	 * mapped means the filter never runs and the token is ignored. Either way the request simply
+	 * arrives unauthenticated, which looks like a permissions problem.
+	 */
+	@Test
+	@DisplayName("the bypass filter's valid URLs and its mappings agree")
+	void bypassFilterUrlsAreConsistent() throws IOException {
+		String contents = configXml();
+
+		Matcher filter = Pattern
+		        .compile("<filter>\\s*<filter-name>authenticationByPassFilter</filter-name>.*?</filter>", Pattern.DOTALL)
+		        .matcher(contents);
+		assertTrue(filter.find(), "the authentication bypass filter should be declared");
+
+		Matcher param = Pattern.compile("<param-name>validUrls</param-name>\\s*<param-value>([^<]*)</param-value>")
+		        .matcher(filter.group());
+		assertTrue(param.find(), "the bypass filter should declare its validUrls");
+		List<String> validUrls = Stream.of(param.group(1).split(",")).map(String::trim).filter(s -> !s.isEmpty())
+		        .collect(Collectors.toList());
+
+		Matcher mapping = Pattern
+		        .compile("<filter-mapping>\\s*<filter-name>authenticationByPassFilter</filter-name>(.*?)</filter-mapping>",
+		            Pattern.DOTALL)
+		        .matcher(contents);
+		assertTrue(mapping.find(), "the bypass filter should be mapped to something");
+
+		List<String> patterns = new ArrayList<>();
+		Matcher pattern = Pattern.compile("<url-pattern>([^<]+)</url-pattern>").matcher(mapping.group(1));
+		while (pattern.find()) {
+			patterns.add(pattern.group(1).trim());
+		}
+
+		assertFalse(validUrls.isEmpty(), "no validUrls found; this test would silently pass");
+		assertFalse(patterns.isEmpty(), "no url-patterns found; this test would silently pass");
+
+		for (String url : validUrls) {
+			assertTrue(
+			    patterns.stream().anyMatch(
+			        p -> p.equals(url) || (p.endsWith("/*") && url.startsWith(p.substring(0, p.length() - 2)))),
+			    "'" + url + "' may present a launch token but no mapping sends it through the filter, so the token "
+			            + "is never read. Mappings are: " + patterns);
+		}
+
+		// The session endpoint was mapped here for a while so the frontend could exchange a launch
+		// token. That put this filter, which logs out stale sessions, in front of the endpoint O3 uses
+		// to log in. The launch establishes its session through the patient-selection servlet instead.
+		assertFalse(patterns.contains("/ws/rest/v1/session"),
+		    "this filter must not sit in front of the session endpoint that O3 logs in through");
+	}
+
+	/**
+	 * A launch that needs a patient chosen is redirected here by the authorization server. If the
+	 * servlet is not registered the redirect 404s part-way through the launch.
+	 */
+	@Test
+	@DisplayName("the patient-selection servlet is registered")
+	void patientSelectionServletIsRegistered() throws IOException {
+		String contents = configXml();
+
+		assertTrue(contents.contains("<servlet-name>smartPatientSelection</servlet-name>"),
+		    "the patient-selection servlet should be registered under the name the realm redirects to");
+		assertTrue(contents.contains("org.openmrs.module.smartonfhir.web.servlet.SmartPatientSelectionServlet"),
+		    "the registered servlet class should exist");
+	}
+
+	private String configXml() throws IOException {
+		Path config = xmlResources().stream().filter(p -> p.getFileName().toString().equals("config.xml")).findFirst()
+		        .orElseThrow(() -> new AssertionError("config.xml not found"));
+
+		return new String(Files.readAllBytes(config), StandardCharsets.UTF_8);
 	}
 }

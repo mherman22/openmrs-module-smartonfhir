@@ -54,18 +54,18 @@ Not done, and worth doing: the walk is a scratch script rather than a spec in th
 `e2e/`, so nothing guards it automatically. It needs the test app running, which is why it was left
 out — worth solving, because this is now the flow a clinician actually uses.
 
-### 4b. A user whose OpenMRS username is NULL cannot sign in — S
+### 4b. ~~A user whose OpenMRS username is NULL cannot sign in~~ — done
 
-OpenMRS stores its `admin` user with `username` NULL and `system_id` `admin`, and any user created
-without a username is stored the same way. The federation provider queries on `username` alone, so
-those users cannot authenticate through Keycloak at all: they answer "Invalid username or password"
-whatever they type.
+`system_id` is mapped, the user lookup and the credential query match either column, and the adapter
+reports the system id when there is no username. Verified against a running Keycloak: `admin` obtains a
+token, `doctor` still does, and an unknown username is refused as a bad credential rather than as a
+server error.
 
-OpenMRS's own `getUserService().getUserByUsername` matches username **or** system_id, which is why
-signing in to OpenMRS directly works for them.
-
-**Done when** the federation provider matches either column, with a test for a user that has only a
-system_id. In `openmrs-contrib-keycloak-auth`.
+Two things came out of it. The test schema declared `username NOT NULL`, which made the users this
+concerns impossible to represent — that is why it went unnoticed for so long. And the fixture added to
+cover it exposed a separate defect in the user search, whose optional criteria were combined with `or`:
+any criterion left unsupplied made the whole query true, so a search by username returned every user.
+Both fixed in `openmrs-contrib-keycloak-auth`.
 
 ### 5. `launch/encounter` redirects to a page that no longer exists — S
 

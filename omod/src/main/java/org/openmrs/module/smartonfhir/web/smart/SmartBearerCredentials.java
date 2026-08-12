@@ -31,6 +31,12 @@ public class SmartBearerCredentials implements AuthenticationCredentials {
 
 	private static final long serialVersionUID = 1L;
 
+	/**
+	 * The scheme these credentials are handled by. Must match the scheme id configured in
+	 * authentication.scheme, so that whichever route produced the credentials reaches the same handler.
+	 */
+	public static final String SCHEME_ID = "smartBearer";
+
 	private final String schemeId;
 
 	private final String username;

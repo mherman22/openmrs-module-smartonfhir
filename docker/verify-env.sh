@@ -149,6 +149,53 @@ else
 fi
 rm -f "$WRONG_BODY" "$RIGHT_BODY" "$KC_LOG"
 
+step "SMART access tokens are actually examined on FHIR requests"
+# A 401 alone proves nothing: fhir2 answers 401 to any unauthenticated call. What
+# distinguishes our path is the OAuth challenge header and our verifier's own log line.
+HDRS="$(mktemp)"
+code="$(curl -s -D "$HDRS" -o /dev/null -w '%{http_code}' --max-time 20 \
+  -H "Authorization: Bearer not-a-real-token" "$OPENMRS/ws/fhir2/R4/Patient" 2>/dev/null || echo 000)"
+check "a bad bearer token is refused" "$code" "401"
+if grep -qi 'WWW-Authenticate: *Bearer error="invalid_token"' "$HDRS"; then
+  pass "the refusal carries an OAuth bearer challenge"
+else
+  fail "the refusal carries an OAuth bearer challenge" "no WWW-Authenticate: Bearer header"
+fi
+rm -f "$HDRS"
+
+OMRS_LOG="$(mktemp)"
+docker compose exec -T backend sh -c 'cat /openmrs/data/openmrs.log' > "$OMRS_LOG" 2>/dev/null || true
+if grep -q "Rejected a SMART access token" "$OMRS_LOG"; then
+  pass "the module's own verifier examined the token"
+else
+  fail "the module's own verifier examined the token" \
+       "no rejection logged, so the bearer filter may not be running at all"
+fi
+rm -f "$OMRS_LOG"
+
+# A structurally valid JWT gets past parsing into key resolution, so the rejection reason
+# shows whether the authorization server's JWKS was actually consulted. Asserting on the
+# module's INFO line would not work: OpenMRS logs this package at WARN.
+WELL_FORMED="$(python3 -c "
+import base64, json, time
+def seg(d): return base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip('=')
+print(seg({'alg':'RS256','kid':'no-such-key'}) + '.' +
+      seg({'iss':'$KC/realms/openmrs','aud':'$OPENMRS/ws/fhir2/R4','preferred_username':'admin','exp':int(time.time())+300}) +
+      '.' + base64.urlsafe_b64encode(b'not-a-real-signature').decode().rstrip('='))")"
+code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+  -H "Authorization: Bearer $WELL_FORMED" "$OPENMRS/ws/fhir2/R4/Patient" 2>/dev/null || echo 000)"
+check "a token signed by an unknown key is refused" "$code" "401"
+
+OMRS_LOG2="$(mktemp)"
+docker compose exec -T backend sh -c 'cat /openmrs/data/openmrs.log' > "$OMRS_LOG2" 2>/dev/null || true
+if grep -qE "no matching key|Signed JWT rejected|Another algorithm expected" "$OMRS_LOG2"; then
+  pass "the authorization server's signing keys were consulted"
+else
+  fail "the authorization server's signing keys were consulted" \
+       "the rejection did not reach key resolution, so JWKS may be unreachable"
+fi
+rm -f "$OMRS_LOG2"
+
 step "Result"
 if [ "$FAILURES" -eq 0 ]; then
   echo "  the environment is ready for SMART launch development"

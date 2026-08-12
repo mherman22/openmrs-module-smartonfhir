@@ -12,18 +12,20 @@ do about it.
 
 ## Blocking: correctness and safety
 
-### 1. The EHR-launch authenticator resolves the user as `admin` — S
+### 1. ~~The EHR-launch authenticator resolves the user as `admin`~~ — done
 
-`SmartLaunchAccessAuthenticator` (in `openmrs-contrib-keycloak-smart-auth`) calls
-`getUserByUsername(realm, "admin")` when building the action token for an EHR launch. Every EHR launch
-therefore acts as `admin` rather than the clinician who started it: wrong identity, and a privilege
-escalation.
+Fixed. It was not the privilege escalation it appeared to be: the app token's subject is the clinician,
+verified against the shared secret, and the hardcoded name only went into Keycloak's internal envelope.
+It was a hard failure — `NoResultException` on a stock OpenMRS database, where the admin user's
+`username` is NULL and `admin` is its `system_id`.
 
-**Done when** the launch handle's owner is the subject of the resulting token, and a test asserts that
-a launch started by one user cannot produce a token for another. The handle is already bound to its
-owner by `SmartLaunchContextService`, so the information is available.
+The round trip now uses the execution's own action URL rather than a user-bound action token, and the
+`launch` scope carries the context mappers it was missing. An EHR launch has been walked end to end and
+is covered by `verify-env.sh`.
 
-*Blocks: 2, 3, 4.*
+Still worth adding: a test that a launch handle issued to one user cannot be redeemed by another.
+`SmartLaunchContextService` enforces it and `SmartLaunchContextServiceTest` covers the service, but
+nothing covers it through the servlet.
 
 ### 2. `smartEhrLaunchServlet` will redirect anywhere — S
 

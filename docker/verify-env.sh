@@ -196,11 +196,30 @@ else
 fi
 rm -f "$OMRS_LOG2"
 
+step "Keycloak reads users from OpenMRS"
+# Without federation, every Keycloak user must be created and kept in step by hand. A
+# federationLink on the user is Keycloak saying the account came from the OpenMRS database.
+FED="$(docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh get users -r openmrs \
+  -q "username=${SMART_DEV_USER:-doctor}" 2>/dev/null | python3 -c "
+import sys,json
+try:
+    u=json.load(sys.stdin)
+    print('federated' if u and u[0].get('federationLink') else ('local' if u else 'absent'))
+except Exception: print('unreadable')")"
+if [ "$FED" = "federated" ]; then
+  pass "the user comes from the OpenMRS database, not a copy in Keycloak"
+elif [ "$FED" = "local" ]; then
+  fail "the user comes from the OpenMRS database" "the user is local to Keycloak; federation is not in use"
+else
+  fail "the user comes from the OpenMRS database" "no such user in the realm ($FED)"
+fi
+
 step "A genuine Keycloak token reads FHIR data"
 # The end-to-end case. Everything above proves bad tokens are refused, which is the easier
 # half; this proves a real one is accepted and maps to an OpenMRS user.
 DEV_USER="${SMART_DEV_USER:-doctor}"
-DEV_PASSWORD="${SMART_DEV_PASSWORD:-Smart123}"
+# With federation, this is the user's own OpenMRS password.
+DEV_PASSWORD="${SMART_DEV_PASSWORD:-OpenmrsDoc123}"
 TOKEN_JSON="$(curl -s --max-time 30 -X POST "$KC/realms/openmrs/protocol/openid-connect/token" \
   -d client_id=smartClient -d grant_type=password -d "username=$DEV_USER" -d "password=$DEV_PASSWORD" \
   -d "scope=openid profile fhirUser launch" 2>/dev/null)"

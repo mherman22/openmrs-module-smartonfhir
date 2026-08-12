@@ -106,6 +106,15 @@ services:
     volumes:
       # Built by up.sh from the sibling openmrs-contrib-keycloak-smart-auth checkout.
       - ${SMART_AUTH_JAR:-../../openmrs-contrib-keycloak-smart-auth/openmrs-keycloak-smart-auth/target/openmrs-keycloak-smart-auth-1.0.0-SNAPSHOT.jar}:/opt/keycloak/providers/openmrs-smart-auth.jar:ro
+      # Lets Keycloak authenticate against the OpenMRS users table, so clinicians use the
+      # credentials they already have. Optional: without it, Keycloak users must be created
+      # and kept in step by hand.
+      - ${USERSTORE_JAR:-../../openmrs-contrib-keycloak-auth/openmrs-keycloak-userstore/target/openmrs-keycloak-userstore-1.0.0-SNAPSHOT.jar}:/opt/keycloak/providers/openmrs-userstore.jar:ro
+      # The federation provider's own JDBC driver. Keycloak ships a MySQL driver for its own
+      # datasource, but Quarkus does not expose it to provider classloaders -- and with an
+      # embedded database it is not on the provider classpath at all. Keycloak's answer is
+      # that a provider's dependencies belong in providers/ beside it.
+      - ${MYSQL_CONNECTOR_JAR:-./target/providers/mysql-connector-j.jar}:/opt/keycloak/providers/mysql-connector-j.jar:ro
       # Rendered by up.sh: holds a generated secret and this environment's URLs,
       # so it is never committed.
       - ./target/import:/opt/keycloak/data/import:ro

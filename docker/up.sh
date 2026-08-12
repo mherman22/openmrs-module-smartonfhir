@@ -24,6 +24,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
 SMART_AUTH_REPO="${SMART_AUTH_REPO:-$HERE/../../openmrs-contrib-keycloak-smart-auth}"
+USERSTORE_REPO="${USERSTORE_REPO:-$HERE/../../openmrs-contrib-keycloak-auth}"
+USERSTORE_JAR_PATH="$USERSTORE_REPO/openmrs-keycloak-userstore/target/openmrs-keycloak-userstore-1.0.0-SNAPSHOT.jar"
 JAR_PATH="$SMART_AUTH_REPO/openmrs-keycloak-smart-auth/target/openmrs-keycloak-smart-auth-1.0.0-SNAPSHOT.jar"
 OPENMRS_PORT="${OPENMRS_PORT:-80}"
 KEYCLOAK_PORT="${KEYCLOAK_PORT:-8180}"
@@ -72,8 +74,32 @@ Set SMART_JAVA_HOME to a suitable JDK, for example:
   note "building with JDK $JAVA_MAJOR"
   (cd "$SMART_AUTH_REPO" && mvn -q -B -ntp clean install)
   [ -f "$JAR_PATH" ] || die "the build did not produce $JAR_PATH"
+
+  if [ -d "$USERSTORE_REPO" ]; then
+    (cd "$USERSTORE_REPO" && mvn -q -B -ntp clean install) && note "built the user federation provider"
+  fi
 else
   note "provider jar present; pass --rebuild to rebuild it"
+fi
+
+# ------------------------------------------------------- federation provider deps
+
+if [ -f "$USERSTORE_JAR_PATH" ]; then
+  log "Staging the federation provider's JDBC driver"
+  mkdir -p "$HERE/target/providers"
+  # Keycloak ships a MySQL driver for its own datasource but does not expose it to provider
+  # classloaders, and with an embedded database it is absent from the provider classpath
+  # entirely. A provider's dependencies belong in providers/ beside it.
+  CONNECTOR="$(find "$HOME/.m2/repository/com/mysql/mysql-connector-j" -name 'mysql-connector-j-*.jar' \
+    ! -name '*sources*' 2>/dev/null | sort | tail -1)"
+  if [ -n "$CONNECTOR" ]; then
+    cp "$CONNECTOR" "$HERE/target/providers/mysql-connector-j.jar"
+    note "staged $(basename "$CONNECTOR")"
+  else
+    die "could not find mysql-connector-j in the local Maven repository.
+Build the federation provider first so the driver is downloaded:
+  (cd $USERSTORE_REPO && mvn -q install)"
+  fi
 fi
 
 # --------------------------------------------------------------- realm rendering
@@ -97,6 +123,9 @@ fi
 SMART_LAUNCH_SECRET="$(cat "$SECRET_FILE")" \
   OPENMRS_BASE_URL="$OPENMRS_BASE_URL" \
   SSL_REQUIRED="${SSL_REQUIRED:-none}" \
+  OPENMRS_JDBC_URL="${OPENMRS_JDBC_URL:-jdbc:mysql://db:3306/openmrs}" \
+  OPENMRS_DB_USER="${OMRS_DB_USER:-openmrs}" \
+  OPENMRS_DB_PASSWORD="${OMRS_DB_PASSWORD:-openmrs}" \
   python3 "$SMART_AUTH_REPO/realm/render-realm.py" "$HERE/target/import/openmrs-realm.json" \
   | sed 's/^/    /'
 
@@ -163,6 +192,10 @@ BACKEND_ID_BEFORE="$(docker compose ps -q backend 2>/dev/null || true)"
 export REFAPP_TAG="${REFAPP_TAG:-3.7.1}"
 export KEYCLOAK_TAG="${KEYCLOAK_TAG:-26.7.1}"
 export SMART_AUTH_JAR="$JAR_PATH"
+# Optional: the stack works without it, with Keycloak users maintained by hand instead.
+if [ -f "$USERSTORE_JAR_PATH" ]; then export USERSTORE_JAR="$USERSTORE_JAR_PATH"; else
+  export USERSTORE_JAR="$JAR_PATH"; note "no user federation provider built; Keycloak will not read OpenMRS users"
+fi
 export SMARTONFHIR_OMOD="$STAGED_OMOD"
 export OPENMRS_PORT KEYCLOAK_PORT
 docker compose up -d
@@ -233,23 +266,22 @@ else
   die "smartClient not found in the openmrs realm"
 fi
 
-# A Keycloak user whose name matches an OpenMRS user. Until the user-federation provider
-# is ported, Keycloak has no knowledge of OpenMRS users, so the two are lined up by hand
-# here. 'doctor' is a clinician in the RefApp demo data, which is what a SMART launch
-# actually involves.
-if kcadm get users -r openmrs -q "username=$SMART_DEV_USER" --fields username --format csv --noquotes | grep -q "$SMART_DEV_USER"; then
-  note "keycloak user '$SMART_DEV_USER' already present"
+# With federation configured, Keycloak reads users from the OpenMRS database and a local
+# user would only shadow them. One is created only when the provider is absent.
+if [ -f "$USERSTORE_JAR_PATH" ]; then
+  note "users come from OpenMRS via federation; no Keycloak user is created"
 else
-  kcadm create users -r openmrs -s "username=$SMART_DEV_USER" -s enabled=true \
-    -s "firstName=Demo" -s "lastName=Clinician" \
-    -s "email=${SMART_DEV_USER}@example.org" -s emailVerified=true >/dev/null \
-    && note "created keycloak user '$SMART_DEV_USER'"
-  # The email is not decoration. Keycloak runs VERIFY_PROFILE conditionally on an incomplete
-  # profile, so a user without one is rejected as "Account is not fully set up" -- and nothing
-  # appears in the user's requiredActions to explain why.
+  if kcadm get users -r openmrs -q "username=$SMART_DEV_USER" --fields username --format csv --noquotes | grep -q "$SMART_DEV_USER"; then
+    note "keycloak user '$SMART_DEV_USER' already present"
+  else
+    kcadm create users -r openmrs -s "username=$SMART_DEV_USER" -s enabled=true \
+      -s "firstName=Demo" -s "lastName=Clinician" \
+      -s "email=${SMART_DEV_USER}@example.org" -s emailVerified=true >/dev/null \
+      && note "created keycloak user '$SMART_DEV_USER'"
+  fi
+  kcadm set-password -r openmrs --username "$SMART_DEV_USER" --new-password "$SMART_DEV_PASSWORD" >/dev/null \
+    && note "set its password (development only)"
 fi
-kcadm set-password -r openmrs --username "$SMART_DEV_USER" --new-password "$SMART_DEV_PASSWORD" >/dev/null \
-  && note "set its password (development only)"
 
 log "Waiting for OpenMRS (first start builds the database and can take minutes)"
 for i in $(seq 1 120); do
@@ -314,7 +346,7 @@ cat <<EOF
     Keycloak admin   http://localhost:${KEYCLOAK_PORT}  (${KEYCLOAK_ADMIN:-admin}/${KEYCLOAK_ADMIN_PASSWORD:-admin})
     Realm            http://localhost:${KEYCLOAK_PORT}/realms/openmrs/.well-known/openid-configuration
 
-    Dev login        ${SMART_DEV_USER:-doctor} / ${SMART_DEV_PASSWORD:-Smart123}  (matches an OpenMRS demo user)
+    Dev login        ${SMART_DEV_USER:-doctor} with that user's own OpenMRS password
 
     Verify the environment:  ./verify-env.sh
     Stop:                    ./up.sh --down

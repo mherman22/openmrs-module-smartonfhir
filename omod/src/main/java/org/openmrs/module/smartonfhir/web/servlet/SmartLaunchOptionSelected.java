@@ -12,6 +12,7 @@ package org.openmrs.module.smartonfhir.web.servlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -21,8 +22,10 @@ import java.nio.charset.StandardCharsets;
 
 import com.nimbusds.jwt.JWTClaimsSet;
 import lombok.extern.slf4j.Slf4j;
+import org.openmrs.api.context.Context;
 import org.openmrs.module.smartonfhir.util.SmartLaunchTokens;
 import org.openmrs.module.smartonfhir.util.SmartSecretKeyHolder;
+import org.openmrs.module.smartonfhir.web.filter.AuthenticationByPassFilter;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -81,7 +84,36 @@ public class SmartLaunchOptionSelected extends HttpServlet {
 
 		String encodedToken = URLEncoder.encode(appToken, StandardCharsets.UTF_8.name());
 
+		endSessionIfItExistedOnlyForThisLaunch(req);
+
 		res.sendRedirect(decodedUrl.replace("{APP_TOKEN}", encodedToken));
+	}
+
+	/**
+	 * Ends the OpenMRS session the launch token created, now the hand-off is done.
+	 * <p>
+	 * A standalone launch has to sign the clinician in so they can search for a patient, and that
+	 * session used to outlive the launch: the browser was left holding a fully privileged session
+	 * nobody had asked for and no visible logout would obviously end. On a shared workstation that is
+	 * the next person's session.
+	 * <p>
+	 * Only a session the bypass filter created is ended, identified by the marker it leaves. A
+	 * clinician who was already signed in to OpenMRS keeps their session — that one is theirs, it
+	 * predates the launch, and ending it would log them out of the application they are working in.
+	 */
+	private void endSessionIfItExistedOnlyForThisLaunch(HttpServletRequest req) {
+		HttpSession session = req.getSession(false);
+
+		if (session == null || session.getAttribute(AuthenticationByPassFilter.SMART_AUTH_BYPASS) == null) {
+			return;
+		}
+
+		// The authentication is ended, but the session container is left alone. Invalidating it leaves the
+		// browser holding a cookie for a session that no longer exists, and OpenMRS answers 401 with an
+		// HTML error page to the next request that presents it — including the session endpoint the
+		// frontend polls, which expects 200 with authenticated false.
+		Context.logout();
+		session.removeAttribute(AuthenticationByPassFilter.SMART_AUTH_BYPASS);
 	}
 
 	private String getParameter(HttpServletRequest request, String parameter) {

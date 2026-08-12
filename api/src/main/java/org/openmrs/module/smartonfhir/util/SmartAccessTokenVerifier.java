@@ -109,7 +109,13 @@ public class SmartAccessTokenVerifier {
 		String username = claimAsString(claims, config.getUsernameClaim());
 
 		if (username == null || username.trim().isEmpty()) {
-			log.warn("A SMART access token passed verification but carries no '{}' claim, so it names no OpenMRS user",
+			// Nearly always a client that was never granted the scope carrying this claim. Its launch
+			// succeeds, so the failure surfaces as a 401 on every FHIR call with nothing to connect it
+			// to a scope. Naming the remedy here is the only place anyone will find it.
+			log.warn(
+			    "A SMART access token passed verification but carries no '{}' claim, so it names no OpenMRS user. "
+			            + "Grant this client the authorization server scope that emits that claim (the 'profile' scope "
+			            + "in the OpenMRS realm), or set usernameClaim in smart-oauth2.json to a claim it does emit.",
 			    config.getUsernameClaim());
 			return null;
 		}

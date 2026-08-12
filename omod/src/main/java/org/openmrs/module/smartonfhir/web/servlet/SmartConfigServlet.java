@@ -80,6 +80,11 @@ public class SmartConfigServlet extends HttpServlet {
 		    orDerived(config.getIntrospectionEndpoint(), issuer, "/protocol/openid-connect/token/introspect"));
 		conformance
 		        .setRevocationEndpoint(orDerived(config.getRevocationEndpoint(), issuer, "/protocol/openid-connect/revoke"));
+		// Without this an app cannot discover how to log anybody out, and logging out of OpenMRS alone
+		// leaves the authorization server's session intact: the next launch is granted silently, as
+		// whoever launched last.
+		conformance
+		        .setEndSessionEndpoint(orDerived(config.getEndSessionEndpoint(), issuer, "/protocol/openid-connect/logout"));
 		conformance.setRegistrationEndpoint(config.getRegistrationEndpoint());
 		conformance.setTokenEndpointAuthMethodsSupported(new String[] { "client_secret_basic", "private_key_jwt" });
 		conformance.setIssuer(issuer);

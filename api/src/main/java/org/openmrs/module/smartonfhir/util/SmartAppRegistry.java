@@ -106,7 +106,9 @@ public class SmartAppRegistry {
 			synchronized (SmartAppRegistry.class) {
 				if (!loadAttempted) {
 					load();
-					loadAttempted = true;
+					// Only latch on success, as SmartOAuth2ConfigHolder does: otherwise a
+					// transiently unreadable file left no app launchable until a restart.
+					loadAttempted = apps != null;
 				}
 			}
 		}

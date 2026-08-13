@@ -77,6 +77,29 @@ class SmartAppRegistryTest {
 			assertTrue(SmartAppRegistry.getApps().isEmpty());
 			assertNull(SmartAppRegistry.getApp("growth-chart"));
 		}
+
+		/**
+		 * A failed load must not be remembered as an answer. The registry latched its "already tried" flag
+		 * whichever way the load went, so one unreadable moment at startup — a mount not ready, a momentary
+		 * permission problem — left every app unlaunchable until the JVM restarted, with the file sitting
+		 * there readable the whole time.
+		 * <p>
+		 * Deliberately does not call the writeRegistry helper: that resets the registry, which would clear
+		 * the flag and let this pass with the defect in place.
+		 */
+		@Test
+		@DisplayName("a registry that appears after the first lookup is still picked up")
+		void aLateRegistryIsPickedUp() throws Exception {
+			assertTrue(SmartAppRegistry.getApps().isEmpty());
+
+			File config = appData.resolve("config").toFile();
+			assertTrue(config.mkdirs() || config.isDirectory());
+			Files.write(config.toPath().resolve(SmartAppRegistry.CONFIG_FILE_NAME),
+			    ("{\"apps\":[{\"id\":\"growth-chart\",\"name\":\"Growth Chart\","
+			            + "\"launchUrl\":\"https://growth.example.org/launch\"}]}").getBytes(StandardCharsets.UTF_8));
+
+			assertNotNull(SmartAppRegistry.getApp("growth-chart"));
+		}
 	}
 
 	@Nested

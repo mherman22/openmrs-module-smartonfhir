@@ -35,10 +35,6 @@
 
 	<require_modules>
 		<require_module>org.openmrs.module.fhir2</require_module>
-		<require_module>org.openmrs.module.uiframework</require_module>
-		<require_module>org.openmrs.module.coreapps</require_module>
-		<require_module>org.openmrs.module.appframework</require_module>
-		<require_module>org.openmrs.module.emrapi</require_module>
 	</require_modules>
 
 	<servlet>
@@ -105,7 +101,7 @@
 		<init-param>
 			<!-- White-list of valid URLs; requesting any other URL will end the session -->
 			<param-name>validUrls</param-name>
-			<param-value>/smartonfhir/findPatient.page,/smartonfhir/smartAccessConfirmation,/ms/smartAccessConfirmation,/ms/smartLaunchOptionSelectedSelected,/appui/session/*,/ws/rest/v1/patient,/ms/uiframework/resource/*,/images/*</param-value>
+			<param-value>/smartonfhir/smartAccessConfirmation,/ms/smartAccessConfirmation,/ms/smartLaunchOptionSelectedSelected,/ws/rest/v1/patient,/images/*</param-value>
 		</init-param>
 	</filter>
 	<filter-mapping>

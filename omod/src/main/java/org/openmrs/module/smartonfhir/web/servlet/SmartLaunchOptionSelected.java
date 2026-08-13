@@ -69,9 +69,12 @@ public class SmartLaunchOptionSelected extends HttpServlet {
 		}
 
 		if (launchTypeString.contains("encounter") && visitId == null) {
-			res.sendRedirect(res.encodeRedirectURL(
-			    req.getContextPath() + "/smartonfhir/findVisit.page?app=smartonfhir.search.visit&patientId=" + patientId
-			            + "&token=" + URLEncoder.encode(token, StandardCharsets.UTF_8.name())));
+			// A launch asking for encounter context needs a visit to be chosen, and the screen that did
+			// that was one of the RefApp 2.x pages removed here: it could not have rendered in a
+			// distribution without uiframework in any case. Refused plainly rather than redirected to a
+			// page that no longer exists, until a replacement exists.
+			log.error("An encounter launch was requested, but there is no visit-selection screen to send the user to");
+			res.sendError(HttpServletResponse.SC_NOT_IMPLEMENTED, "Encounter launch is not supported");
 			return;
 		}
 

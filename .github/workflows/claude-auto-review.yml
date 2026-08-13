@@ -15,6 +15,14 @@ name: Claude Auto Review
 on:
   pull_request:
     types: [ opened, ready_for_review ]
+  # Re-review on demand: an updated pull request, or one that opened before this
+  # workflow existed on its base branch.
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number to review'
+        required: true
+        type: string
 
 env:
   # Same pin the shared workflow uses. Bump deliberately, not automatically: this file
@@ -30,24 +38,31 @@ env:
 
 jobs:
   review:
-    # A pull request from a fork receives no secrets, so the API key would arrive empty and
-    # every outside contributor would get a failed check instead of a review. Restricting to
-    # same-repository branches also means the code being reviewed was pushed by someone who
-    # already has write access -- which is what makes running the build below acceptable.
+    # A manual run is already gated by who can press the button. An automatic one is not,
+    # so it is restricted to branches in this repository: a pull request from a fork
+    # receives no secrets, and its author would get a failed check instead of a review.
+    # Same-repository also means the code was pushed by someone with write access, which
+    # is what makes running the build below acceptable.
     if: >-
-      github.event.pull_request.head.repo.full_name == github.repository
-      && github.event.pull_request.draft == false
+      github.event_name == 'workflow_dispatch'
+      || (github.event.pull_request.head.repo.full_name == github.repository
+          && github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       pull-requests: write
       issues: write
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
 
     steps:
       - name: Check out the pull request head
         uses: actions/checkout@v7
         with:
+          # The head, not the merge commit: the review is of the author's code. Resolves
+          # for a manual run too, where there is no pull_request event to default from.
+          ref: refs/pull/${{ github.event.pull_request.number || inputs.pr }}/head
           # fetch-depth: 0 because the skill's verification needs real git history --
           # merge-base, diffing against the base, drift checks.
           fetch-depth: 0
@@ -56,10 +71,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           dest="$RUNNER_TEMP/review-methodology.md"
+
+          # A manual run carries no event payload, so ask GitHub what this pull request
+          # is based on.
+          BASE_SHA="${EVENT_BASE_SHA:-$(gh pr view "$PR" --repo "$REPO" --json baseRefOid --jq .baseRefOid)}"
+          echo "Reviewing PR #$PR, based on $BASE_SHA."
 
           curl -fsSL "$PR_REVIEW_SKILL_URL" -o "$dest"
           test -s "$dest"
@@ -94,7 +114,7 @@ jobs:
           github_token: ${{ github.token }}
           allowed_non_write_users: "*"
           prompt: |
-            Review pull request #${{ github.event.pull_request.number }} in the
+            Review pull request #${{ env.PR }} in the
             repository ${{ github.repository }}, following the PR-review
             methodology appended to your system prompt exactly: its verification
             requirements, its rules for every inline comment, and its posting

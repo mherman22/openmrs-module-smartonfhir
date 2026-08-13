@@ -49,7 +49,10 @@ public class SmartOAuth2ConfigHolder {
 			synchronized (SmartOAuth2ConfigHolder.class) {
 				if (!loadAttempted) {
 					load();
-					loadAttempted = true;
+					// Only latch on success. Latching either way meant one transient failure to
+					// read the file -- a mount not ready, a moment's bad permissions -- left
+					// SMART unconfigured for the life of the JVM, with nothing able to reset it.
+					loadAttempted = config != null;
 				}
 			}
 		}

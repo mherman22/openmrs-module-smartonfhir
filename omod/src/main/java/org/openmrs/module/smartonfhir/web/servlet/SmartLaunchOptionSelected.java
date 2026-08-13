@@ -16,17 +16,20 @@ import javax.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 import com.nimbusds.jwt.JWTClaimsSet;
 import lombok.extern.slf4j.Slf4j;
 import org.openmrs.api.context.Context;
+import org.openmrs.module.smartonfhir.model.SmartOAuth2Config;
 import org.openmrs.module.smartonfhir.util.SmartLaunchTokens;
+import org.openmrs.module.smartonfhir.util.SmartOAuth2ConfigHolder;
 import org.openmrs.module.smartonfhir.util.SmartSecretKeyHolder;
 import org.openmrs.module.smartonfhir.web.filter.AuthenticationByPassFilter;
+import org.openmrs.module.smartonfhir.web.util.SmartLaunchTargets;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Slf4j
@@ -36,33 +39,48 @@ public class SmartLaunchOptionSelected extends HttpServlet {
 		String token = getParameter(req, "token");
 		String patientId = getParameter(req, "patientId");
 		String visitId = getParameter(req, "visitId");
-		String decodedUrl = URLDecoder.decode(token, StandardCharsets.UTF_8.name());
 
-		String jwtKeyToken = null;
-		try {
-			jwtKeyToken = getParameterFromStringUrl(decodedUrl, "key");
-		}
-		catch (URISyntaxException e) {
-			log.error("Verification exception while trying to determine launchType", e);
+		// Before anything is decoded: this used to run URLDecoder on the parameter twenty-five lines
+		// above the null check, so a request without one answered 500 instead of 400.
+		if (token == null || (patientId == null && visitId == null)) {
+			res.sendError(HttpServletResponse.SC_BAD_REQUEST, "A token and a patient or visit are required");
 			return;
 		}
 
-		String launchTypeString = getLaunchTypeString(jwtKeyToken);
+		// This endpoint signs launch context with the secret shared with the authorization server, and
+		// hands the result to whatever address the token names. Unauthenticated, that is an oracle: any
+		// caller could obtain a token asserting any patient, delivered to a URL of their choosing. The
+		// bypass filter in front of this never *requires* authentication -- a request it cannot read a
+		// launch token from simply passes through -- so the check has to be here.
+		if (!Context.isAuthenticated()) {
+			log.error("Refused to sign launch context for an unauthenticated request");
+			res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Not authenticated");
+			return;
+		}
+
+		final String decodedUrl = SmartLaunchTargets.decodeLaunchTarget(token);
+
+		// The signed token goes to this address, so it must be the authorization server's own. Without
+		// this, the address came from the request and the token could be delivered anywhere.
+		if (!isAuthorizationServerAddress(decodedUrl)) {
+			log.error("Refused to send launch context to an address that is not the authorization server");
+			res.sendError(HttpServletResponse.SC_BAD_REQUEST, "The launch target is not the authorization server");
+			return;
+		}
+
+		final String launchTypeString = getLaunchTypeString(SmartLaunchTargets.parameterFrom(decodedUrl, "key"));
 
 		if (launchTypeString == null) {
-			res.sendError(HttpServletResponse.SC_FORBIDDEN, "Couldn't found scope in Token");
+			res.sendError(HttpServletResponse.SC_FORBIDDEN, "The launch token names no scope");
 			return;
 		}
 
 		if (launchTypeString.contains("encounter") && visitId == null) {
-			res.sendRedirect(res.encodeRedirectURL(
-			    req.getContextPath() + "/smartonfhir/findVisit.page?app=smartonfhir.search.visit&patientId=" + patientId
-			            + "&token=" + URLEncoder.encode(token, StandardCharsets.UTF_8.name())));
-			return;
-		}
-
-		if (token == null || (patientId == null && visitId == null)) {
-			res.sendError(HttpServletResponse.SC_BAD_REQUEST);
+			// The screen that chose a visit was a RefApp 2.x page, removed with the rest of that UI: it
+			// could not have rendered in a distribution without uiframework. Refused plainly rather than
+			// redirected to a page that no longer exists, until a replacement exists.
+			log.error("An encounter launch was requested, but there is no visit-selection screen to send the user to");
+			res.sendError(HttpServletResponse.SC_NOT_IMPLEMENTED, "Encounter launch is not supported");
 			return;
 		}
 
@@ -114,6 +132,36 @@ public class SmartLaunchOptionSelected extends HttpServlet {
 		// frontend polls, which expects 200 with authenticated false.
 		Context.logout();
 		session.removeAttribute(AuthenticationByPassFilter.SMART_AUTH_BYPASS);
+	}
+
+	/**
+	 * Whether a launch target belongs to the configured authorization server.
+	 * <p>
+	 * Compared on scheme, host and port -- the issuer's origin -- rather than as a string prefix, so a
+	 * host that merely starts with the issuer's cannot pass.
+	 */
+	private boolean isAuthorizationServerAddress(String target) {
+		final SmartOAuth2Config config = SmartOAuth2ConfigHolder.getConfig();
+
+		if (target == null || config == null || config.getIssuer() == null) {
+			return false;
+		}
+
+		// UriComponentsBuilder rather than java.net.URI: the target carries the authorization server's
+		// own {APP_TOKEN} placeholder, and braces are illegal in a URI -- constructing one threw, which
+		// this method read as "not the authorization server" and refused every real launch.
+		try {
+			UriComponents candidate = UriComponentsBuilder.fromUriString(target).build();
+			UriComponents issuer = UriComponentsBuilder.fromUriString(config.getIssuer()).build();
+
+			return candidate.getScheme() != null && candidate.getScheme().equalsIgnoreCase(issuer.getScheme())
+			        && candidate.getHost() != null && candidate.getHost().equalsIgnoreCase(issuer.getHost())
+			        && candidate.getPort() == issuer.getPort();
+		}
+		catch (Exception e) {
+			log.error("A launch target could not be parsed", e);
+			return false;
+		}
 	}
 
 	private String getParameter(HttpServletRequest request, String parameter) {

@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.openmrs.User;
 import org.openmrs.module.smartonfhir.model.SmartSession;
 
 /**
@@ -165,6 +166,43 @@ class SmartLaunchContextServiceTest {
 			SmartSession visitOnly = service.redeem(service.issue(CLINICIAN, null, VISIT), CLINICIAN);
 			assertEquals(VISIT, visitOnly.getVisitUuid());
 			assertNull(visitOnly.getPatientUuid());
+		}
+	}
+
+	@Nested
+	@DisplayName("ownership")
+	class Ownership {
+
+		/**
+		 * A handle with no recorded owner used to be redeemable by anybody: the check read
+		 * {@code owner != null && !owner.equals(user)}, so a null owner matched everyone rather than
+		 * nobody. It mattered because the owner came from {@code User.getUsername()}, and OpenMRS's own
+		 * admin account has none -- so a launch started during setup or a demo minted a handle bound to
+		 * nothing, which then travelled to the app in a query string.
+		 */
+		@Test
+		@DisplayName("a handle is never issued without an owner")
+		void refusesToIssueWithoutAnOwner() {
+			assertNull(service.issue(null, PATIENT, VISIT));
+			assertNull(service.issue("", PATIENT, VISIT));
+			assertNull(service.issue("   ", PATIENT, VISIT));
+		}
+
+		@Test
+		@DisplayName("identify falls back to the system id when there is no username")
+		void identifyFallsBackToSystemId() {
+			User withUsername = new User();
+			withUsername.setUsername("doctor");
+			withUsername.setSystemId("6-7");
+			assertEquals("doctor", SmartLaunchContextService.identify(withUsername));
+
+			User adminShaped = new User();
+			adminShaped.setUsername(null);
+			adminShaped.setSystemId("admin");
+			assertEquals("admin", SmartLaunchContextService.identify(adminShaped),
+			    "the account OpenMRS ships with has no username and is identified by its system id");
+
+			assertNull(SmartLaunchContextService.identify(null));
 		}
 	}
 }

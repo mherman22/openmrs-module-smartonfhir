@@ -111,7 +111,15 @@ public final class SmartLaunchTokens {
 			JWTClaimsSet claims = jwt.getJWTClaimsSet();
 			Date expiration = claims.getExpirationTime();
 
-			if (expiration != null && expiration.before(new Date())) {
+			// A missing exp is refused, not tolerated. sign() always stamps one, so a token without it did
+			// not come from here -- and accepting it reintroduced exactly the indefinite replay this class
+			// exists to prevent, only requiring the shared secret to exploit.
+			if (expiration == null) {
+				log.error("Token carries no expiry; refusing it");
+				return null;
+			}
+
+			if (expiration.before(new Date())) {
 				log.error("Token expired at {}", expiration);
 				return null;
 			}

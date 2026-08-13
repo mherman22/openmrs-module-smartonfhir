@@ -35,8 +35,8 @@ import org.keycloak.jose.jws.crypto.HMACProvider;
 import org.keycloak.representations.JsonWebToken;
 import org.openmrs.api.context.Context;
 import org.openmrs.api.context.ContextAuthenticationException;
+import org.openmrs.module.smartonfhir.auth.SmartTokenCredentials;
 import org.openmrs.module.smartonfhir.util.SmartSecretKeyHolder;
-import org.openmrs.module.smartonfhir.web.smart.SmartTokenCredentials;
 
 @Slf4j
 public class AuthenticationByPassFilter implements Filter {

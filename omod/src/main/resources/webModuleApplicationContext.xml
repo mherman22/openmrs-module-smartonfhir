@@ -16,7 +16,17 @@
   		    http://www.springframework.org/schema/context
   		    http://www.springframework.org/schema/context/spring-context-3.0.xsd">
 
-	<context:component-scan base-package="org.openmrs.module.smartonfhir.web"/>
+	<!--
+		Context.setAuthenticationScheme() resolves getBean(AuthenticationScheme.class) and permits
+		exactly one candidate. A second one on the classpath makes that lookup ambiguous and OpenMRS
+		disables every candidate, including the authentication module's own scheme, which RefApp 3.7.1
+		relies on: the symptom is every module losing authentication, not just this one.
+		SmartBearerTokenAuthenticationScheme is therefore instantiated by the authentication module
+		from its own configuration, never by Spring.
+	-->
+	<context:component-scan base-package="org.openmrs.module.smartonfhir.web">
+		<context:exclude-filter type="assignable" expression="org.openmrs.api.context.AuthenticationScheme"/>
+	</context:component-scan>
 	<bean class="org.openmrs.ui.framework.StandardModuleUiConfiguration">
 		<property name="moduleId" value="smartonfhir"/>
 	</bean>

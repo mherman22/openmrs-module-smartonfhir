@@ -78,6 +78,20 @@
 
 	<dependencyManagement>
 		<dependencies>
+			<!-- Provides WebAuthenticationScheme, the extension point for a module that authenticates
+			     requests its own way. Shipped by RefApp 3.7.1, and a hard requirement from here on. -->
+			<dependency>
+				<groupId>org.openmrs.module</groupId>
+				<artifactId>authentication-api</artifactId>
+				<version>${authenticationVersion}</version>
+				<scope>provided</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.openmrs.module</groupId>
+				<artifactId>authentication-omod</artifactId>
+				<version>${authenticationVersion}</version>
+				<scope>provided</scope>
+			</dependency>
 			<!-- Token verification. The only third-party jar this module ships: it keeps Keycloak out
 			     of the dependency graph entirely, so a different authorization server is configuration
 			     rather than a rewrite. -->
@@ -650,6 +664,7 @@
 		<openmrsPlatformToolsVersion>2.8.8</openmrsPlatformToolsVersion>
 		<fhir2Version>4.2.0</fhir2Version>
 		<nimbusVersion>9.48</nimbusVersion>
+		<authenticationVersion>2.3.0</authenticationVersion>
 		<junitVersion>5.11.4</junitVersion>
 		<keycloakVersion>14.0.0</keycloakVersion>
 		<caffeineVersion>2.8.2</caffeineVersion>

@@ -48,7 +48,9 @@ jobs:
       || (github.event.pull_request.head.repo.full_name == github.repository
           && github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 60, matching the shared workflow: a large pull request spends real time reading
+    # and building before it composes anything.
+    timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: write
@@ -155,6 +157,11 @@ jobs:
             --model ${{ env.MODEL }}
             --effort ${{ env.EFFORT }}
             --append-system-prompt-file ${{ runner.temp }}/review-methodology.md
-            --max-turns 60
+            # 60 was not enough: a 72-file review on #6 died with error_max_turns
+            # having posted nothing, the turns spent reading and verifying rather
+            # than composing. Deliberately above the shared workflow's 100: that
+            # one runs Opus at max effort, this one Sonnet at medium, which covers
+            # less ground per turn.
+            --max-turns 150
             --allowedTools "Bash,Read,Grep,Glob,mcp__github_inline_comment__create_inline_comment"
             --disallowedTools "Write,Edit"

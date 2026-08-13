@@ -317,6 +317,10 @@ Listed because pretending otherwise is worse.
 - **Discovery endpoints are derived Keycloak-shaped.** `SmartConfigServlet` falls back to
   `/protocol/openid-connect/*` when the configuration does not state them. Reading the issuer's own
   discovery document is the correct answer.
+- **`introspection_endpoint` is advertised without a client that can use it.** Introspection requires
+  client authentication, and the token endpoint here offers only `client_secret_basic` and
+  `private_key_jwt` — so a public app reading the discovery document finds an endpoint it cannot
+  authenticate to. Either register a confidential client for it or stop advertising it.
 - **The launch token is decoded twice.** `SmartLaunchOptionSelected` calls `URLDecoder.decode` on a
   value the container already decoded. It is load-bearing — the `{APP_TOKEN}` placeholder only appears
   after the second pass — and preserved deliberately, because the chain is verified end to end around

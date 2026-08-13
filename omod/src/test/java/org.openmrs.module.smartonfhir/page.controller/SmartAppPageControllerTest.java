@@ -31,49 +31,49 @@ import org.openmrs.ui.framework.page.PageModel;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SmartAppPageControllerTest {
-	
+
 	public static final String SMART_APPS_EXTENSION_POINT = "smartAppManagement.apps";
-	
+
 	public static final String EXTENSION_ID = "123456789";
-	
+
 	public static final String EXTENSION_ATTRIBUTE_NAME = "extensions";
-	
+
 	@Spy
 	private UiSessionContext uiSessionContext = new UiSessionContext();
-	
+
 	@Mock
 	private AppFrameworkService appFrameworkService;
-	
+
 	private PageModel pageModel;
-	
+
 	private SmartAppsPageController smartAppsPageController;
-	
+
 	private List<Extension> list;
-	
+
 	@Before
 	public void setup() {
 		smartAppsPageController = new SmartAppsPageController();
 		pageModel = new PageModel();
 		list = new ArrayList<>();
 		Extension extension = new Extension();
-		
+
 		extension.setId(EXTENSION_ID);
 		list.add(extension);
 	}
-	
+
 	@Test
 	public void shouldReturnCorrectAttribute() {
 		when(appFrameworkService.getExtensionsForCurrentUser(SMART_APPS_EXTENSION_POINT)).thenReturn(list);
 		doNothing().when(uiSessionContext).requireAuthentication();
-		
+
 		smartAppsPageController.get(pageModel, uiSessionContext, appFrameworkService);
-		
+
 		assertThat(pageModel, notNullValue());
 		assertThat(pageModel.isEmpty(), equalTo(false));
 		assertThat(pageModel.getAttribute(EXTENSION_ATTRIBUTE_NAME), notNullValue());
 		assertThat(pageModel.getAttribute(EXTENSION_ATTRIBUTE_NAME), equalTo(list));
 	}
-	
+
 	@Test(expected = APIAuthenticationException.class)
 	public void shouldReturnExceptionWhenNotAuthenticated() {
 		doThrow(new APIAuthenticationException()).when(uiSessionContext).requireAuthentication();

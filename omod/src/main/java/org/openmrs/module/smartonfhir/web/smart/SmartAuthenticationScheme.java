@@ -29,12 +29,12 @@ import org.springframework.stereotype.Component;
 @Component
 @Slf4j
 public class SmartAuthenticationScheme implements AuthenticationScheme {
-	
+
 	private volatile UsernamePasswordAuthenticationScheme delegate = null;
-	
+
 	@Autowired
 	private FhirUserDao dao;
-	
+
 	@Override
 	public Authenticated authenticate(Credentials credentials) throws ContextAuthenticationException {
 		if (!(credentials instanceof SmartTokenCredentials)) {
@@ -47,13 +47,13 @@ public class SmartAuthenticationScheme implements AuthenticationScheme {
 						}
 					}
 				}
-				
+
 				return delegate.authenticate(credentials);
 			}
-			
+
 			throw new ContextAuthenticationException("Invalid credentials");
 		}
-		
+
 		User user = null;
 		String username = credentials.getClientName();
 		if (StringUtils.isNotBlank(username)) {
@@ -61,14 +61,14 @@ public class SmartAuthenticationScheme implements AuthenticationScheme {
 				user = dao.getUserByUserName(username);
 			}
 			catch (Exception ignored) {
-				
+
 			}
 		}
-		
+
 		if (user == null) {
 			throw new ContextAuthenticationException("Invalid credentials");
 		}
-		
+
 		return new BasicAuthenticated(user, credentials.getAuthenticationScheme());
 	}
 }

@@ -30,14 +30,14 @@ import org.openmrs.module.smartonfhir.util.KeycloakConfigHolder;
 
 @Slf4j
 public class SmartSessionLogoutFilter implements Filter {
-	
+
 	private String logoutUrl = null;
-	
+
 	@Override
 	public void init(FilterConfig filterConfig) {
 		final KeycloakUriBuilder keycloakUriBuilder = KeycloakDeploymentBuilder
 		        .build(KeycloakConfigHolder.getKeycloakConfig()).getLogoutUrl();
-		
+
 		if (keycloakUriBuilder != null) {
 			logoutUrl = keycloakUriBuilder.toTemplate();
 		} else {
@@ -45,7 +45,7 @@ public class SmartSessionLogoutFilter implements Filter {
 			    "Could not find Keycloak configuration file. Please run keycloak server before openmrs to avoid this error");
 		}
 	}
-	
+
 	@Override
 	public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain)
 	        throws IOException, ServletException {
@@ -53,15 +53,15 @@ public class SmartSessionLogoutFilter implements Filter {
 		if (request.getRequestURI().contains("/logout")) {
 			keycloakSessionLogout();
 		}
-		
+
 		filterChain.doFilter(servletRequest, servletResponse);
 	}
-	
+
 	@Override
 	public void destroy() {
-		
+
 	}
-	
+
 	private void keycloakSessionLogout() throws IOException {
 		CloseableHttpClient closeableHttpClient = HttpClientBuilder.create().disableRedirectHandling().build();
 		CloseableHttpResponse closeableHttpResponse = null;

@@ -25,20 +25,20 @@ import org.openmrs.api.context.Credentials;
  * made of the user info sent over from the OAuth2 provider.
  */
 public class SmartTokenCredentials implements Credentials {
-	
+
 	final public static String SCHEME_NAME = "SMART_AUTH_SCHEME";
-	
+
 	private final String smartUser;
-	
+
 	public SmartTokenCredentials(String smartUser) {
 		this.smartUser = smartUser;
 	}
-	
+
 	@Override
 	public String getAuthenticationScheme() {
 		return SCHEME_NAME;
 	}
-	
+
 	@Override
 	public String getClientName() {
 		return smartUser;

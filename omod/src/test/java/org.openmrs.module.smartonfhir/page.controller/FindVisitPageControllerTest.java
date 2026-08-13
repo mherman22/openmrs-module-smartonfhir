@@ -49,48 +49,48 @@ import org.openmrs.ui.framework.page.PageModel;
 
 @RunWith(MockitoJUnitRunner.class)
 public class FindVisitPageControllerTest {
-	
+
 	private static final String AFTER_SELECTED_URL = "/ms/smartLaunchOptionSelected?app=smart_client&patientId={{patient.uuid}}&token={{token}}";
-	
+
 	private static final String UNAFFECTED_AFTER_SELECTED_URL = "/ms/smartLaunchOptionSelected?app=smart_client";
-	
+
 	private static final String TOKEN_URL = "http://localhost:8180/auth/realms/openmrs/login-actions/action-token?key=123";
-	
+
 	private static final String PATIENT_UUID = "1234";
-	
+
 	private static final String PATIENT_ID = "12";
-	
+
 	private static final String VISIT_UUID = "56789";
-	
+
 	private static final String VISIT_TYPE_UUID = "9876";
-	
+
 	@Spy
 	private VisitTypeHelper visitTypeHelper = new VisitTypeHelper();
-	
+
 	@Mock
 	private PatientService patientService;
-	
+
 	@Mock
 	private VisitService visitService;
-	
+
 	private UiSessionContext uiSessionContext;
-	
+
 	private PageModel pageModel;
-	
+
 	private FindVisitPageController findVisitPageController;
-	
+
 	private AppDescriptor appDescriptor;
-	
+
 	private List<Visit> list;
-	
+
 	private UiUtils ui;
-	
+
 	private Patient patient;
-	
+
 	private Visit visit;
-	
+
 	private MockedStatic<Context> contextMockedStatic;
-	
+
 	@Before
 	public void setup() throws Exception {
 		appDescriptor = new AppDescriptor();
@@ -101,95 +101,95 @@ public class FindVisitPageControllerTest {
 		patient = new Patient();
 		list = new ArrayList<>();
 		visit = new Visit();
-		
+
 		visit.setUuid(VISIT_UUID);
 		list.add(visit);
 		patient.setUuid(PATIENT_UUID);
 		patient.setId(Integer.valueOf(PATIENT_ID));
-		
+
 		appDescriptor.getConfig().put("afterSelectedUrl", AFTER_SELECTED_URL);
-		
+
 		contextMockedStatic = Mockito.mockStatic(Context.class);
-		
+
 		contextMockedStatic.when(Context::getPatientService).thenReturn(patientService);
 		contextMockedStatic.when(Context::getVisitService).thenReturn(visitService);
 		contextMockedStatic.when(() -> Context.hasPrivilege(CoreAppsConstants.PRIVILEGE_PATIENT_VISITS)).thenReturn(true);
 		when(patientService.getPatientByUuid(PATIENT_ID)).thenReturn(patient);
 		when(visitService.getVisitsByPatient(patient)).thenReturn(list);
 	}
-	
+
 	@After
 	public void close() {
 		contextMockedStatic.close();
 	}
-	
+
 	@Test
 	public void shouldReturnAllCorrectAttributes() throws Exception {
 		findVisitPageController.get(uiSessionContext, pageModel, appDescriptor, null, visitService, PATIENT_ID, TOKEN_URL,
 		    uiSessionContext, visitTypeHelper);
-		
+
 		assertThat(pageModel, notNullValue());
 		assertThat(pageModel.get("visitSummaries"), notNullValue());
 		assertThat(pageModel.get("canViewVisits"), notNullValue());
 		assertThat(pageModel.get("visitTypesWithAttr"), notNullValue());
 		assertThat(pageModel.get("afterSelectedUrl"), notNullValue());
 	}
-	
+
 	@Test
 	public void shouldReturnCorrectVisitSummaries() throws UnsupportedEncodingException {
 		findVisitPageController.get(uiSessionContext, pageModel, appDescriptor, null, visitService, PATIENT_ID, TOKEN_URL,
 		    uiSessionContext, visitTypeHelper);
-		
+
 		assertThat(pageModel, notNullValue());
 		assertThat(pageModel.get("visitSummaries"), notNullValue());
-		
+
 		List<Visit> result = (List) pageModel.get("visitSummaries");
-		
+
 		assertThat(result, notNullValue());
 		assertThat(result.size(), equalTo(1));
 		assertThat(result.get(0).getUuid(), equalTo(VISIT_UUID));
 	}
-	
+
 	@Test
 	public void shouldReturnCorrectCanViewVisits() throws UnsupportedEncodingException {
 		findVisitPageController.get(uiSessionContext, pageModel, appDescriptor, null, visitService, PATIENT_ID, TOKEN_URL,
 		    uiSessionContext, visitTypeHelper);
-		
+
 		assertThat(pageModel, notNullValue());
 		assertThat(pageModel.get("canViewVisits"), equalTo(true));
 	}
-	
+
 	@Test
 	public void shouldReturnCorrectVisitTypeWithAttr() throws UnsupportedEncodingException {
 		VisitType visitType = new VisitType();
 		visitType.setUuid(VISIT_TYPE_UUID);
 		visitService.saveVisitType(visitType);
-		
+
 		Map<String, Object> typeAttr = new HashMap<>();
 		Mockito.lenient().doReturn(typeAttr).when(visitTypeHelper).getVisitTypeColorAndShortName(visitType);
-		
+
 		findVisitPageController.get(uiSessionContext, pageModel, appDescriptor, null, visitService, PATIENT_ID, TOKEN_URL,
 		    uiSessionContext, visitTypeHelper);
-		
+
 		assertThat(pageModel, notNullValue());
 		assertThat(pageModel.get("visitTypesWithAttr"), notNullValue());
-		
+
 		Map<Integer, Object> result = (Map<Integer, Object>) pageModel.get("visitTypesWithAttr");
-		
+
 		assertThat(result, notNullValue());
 		assertThat(result, equalTo(typeAttr));
 	}
-	
+
 	@Test
 	public void shouldReturnCorrectAfterSelectedURL() throws UnsupportedEncodingException {
 		findVisitPageController.get(uiSessionContext, pageModel, appDescriptor, null, visitService, PATIENT_ID, TOKEN_URL,
 		    uiSessionContext, visitTypeHelper);
-		
+
 		assertThat(pageModel, notNullValue());
 		assertThat(pageModel.get("afterSelectedUrl"), notNullValue());
-		
+
 		String result = (String) pageModel.get("afterSelectedUrl");
-		
+
 		assertThat(result, notNullValue());
 		assertThat(result, containsString(UNAFFECTED_AFTER_SELECTED_URL));
 		assertThat(result, containsString(URLEncoder.encode(TOKEN_URL, StandardCharsets.UTF_8.name())));

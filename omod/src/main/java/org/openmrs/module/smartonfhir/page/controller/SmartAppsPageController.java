@@ -19,18 +19,18 @@ import org.openmrs.ui.framework.annotation.SpringBean;
 import org.openmrs.ui.framework.page.PageModel;
 
 public class SmartAppsPageController {
-	
+
 	public static final String SMART_APPS_EXTENSION_POINT = "smartAppManagement.apps";
-	
+
 	public void get(PageModel model, UiSessionContext sessionContext,
 	        @SpringBean("appFrameworkService") AppFrameworkService appFrameworkService) {
-		
+
 		sessionContext.requireAuthentication();
-		
+
 		List<Extension> extensions = appFrameworkService.getExtensionsForCurrentUser(SMART_APPS_EXTENSION_POINT);
-		
+
 		Collections.sort(extensions);
 		model.addAttribute("extensions", extensions);
 	}
-	
+
 }

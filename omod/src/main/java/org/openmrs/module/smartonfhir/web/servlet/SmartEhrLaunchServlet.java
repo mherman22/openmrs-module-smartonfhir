@@ -22,7 +22,7 @@ import org.openmrs.module.smartonfhir.util.FhirBaseAddressStrategy;
 import org.openmrs.module.smartonfhir.util.SmartSessionCache;
 
 public class SmartEhrLaunchServlet extends HttpServlet {
-	
+
 	@Override
 	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
 		FhirBaseAddressStrategy fhirBaseAddressStrategy = new FhirBaseAddressStrategy();
@@ -30,28 +30,28 @@ public class SmartEhrLaunchServlet extends HttpServlet {
 		String visitId = req.getParameter("visitId");
 		String launchContext = req.getParameter("launchContext");
 		String url = fhirBaseAddressStrategy.getBaseSmartLaunchAddress(req);
-		
+
 		SmartSessionCache smartSessionCache = new SmartSessionCache();
 		SmartSession smartSession = new SmartSession();
-		
+
 		smartSession.setPatientUuid(patientId);
 		smartSession.setVisitUuid(visitId);
-		
+
 		if (launchContext.equals("patient")) {
 			url = url + patientId;
 			smartSessionCache.put(patientId, smartSession);
 		}
-		
+
 		if (launchContext.equals("encounter")) {
 			url = url + visitId;
 			smartSessionCache.put(visitId, smartSession);
 		}
-		
+
 		if (StringUtils.isBlank(url)) {
 			resp.sendError(HttpStatus.SC_BAD_REQUEST, "A url must be provided");
 			return;
 		}
-		
+
 		resp.sendRedirect(resp.encodeRedirectURL(url));
 	}
 }

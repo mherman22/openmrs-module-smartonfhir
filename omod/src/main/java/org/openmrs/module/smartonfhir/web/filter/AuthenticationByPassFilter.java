@@ -40,15 +40,15 @@ import org.openmrs.module.smartonfhir.web.smart.SmartTokenCredentials;
 
 @Slf4j
 public class AuthenticationByPassFilter implements Filter {
-	
+
 	public static final String SMART_AUTH_BYPASS = "SMART_AUTH_BYPASS";
-	
+
 	private static final String VALID_URLS_PARAM = "validUrls";
-	
+
 	private static final Pattern KEY_PARAM = Pattern.compile("^key=([^&]*)(?:&|$)");
-	
+
 	private List<String> validUrls = new ArrayList<>(0);
-	
+
 	@Override
 	public void init(FilterConfig filterConfig) {
 		String validUrlsParam = filterConfig.getInitParameter(VALID_URLS_PARAM);
@@ -58,24 +58,24 @@ public class AuthenticationByPassFilter implements Filter {
 				        if (it.startsWith("/") || it.equals("*")) {
 					        return it;
 				        }
-				        
+
 				        return "/" + it;
 			        }).distinct().collect(Collectors.toList());
 		}
 	}
-	
+
 	@Override
 	public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain)
 	        throws IOException, ServletException {
 		HttpServletRequest request = (HttpServletRequest) servletRequest;
 		HttpServletResponse response = (HttpServletResponse) servletResponse;
-		
+
 		if (request.getRequestedSessionId() != null && !request.isRequestedSessionIdValid()) {
 			Context.logout();
 		}
-		
+
 		String pathInfo = request.getRequestURI();
-		
+
 		boolean isValidRequest = false;
 		if (pathInfo != null) {
 			final String thePathInfo = pathInfo.replaceFirst(request.getContextPath(), "");
@@ -88,11 +88,11 @@ public class AuthenticationByPassFilter implements Filter {
 						return thePathInfo.startsWith(urlStart);
 					}
 				}
-				
+
 				return url.equals(thePathInfo);
 			});
 		}
-		
+
 		if (!isValidRequest) {
 			HttpSession session = request.getSession(false);
 			if (session != null && session.getAttribute(SMART_AUTH_BYPASS) != null) {
@@ -100,32 +100,32 @@ public class AuthenticationByPassFilter implements Filter {
 				Context.logout();
 				request.getSession();
 			}
-			
+
 			filterChain.doFilter(request, response);
 			return;
 		}
-		
+
 		if (!Context.isAuthenticated()) {
 			final String tokenParam = request.getParameter("token");
-			
+
 			if (tokenParam != null) {
 				int keyPos = tokenParam.indexOf("key=");
 				if (keyPos >= 0) {
 					Matcher m = KEY_PARAM.matcher(tokenParam.substring(keyPos));
 					if (m.find()) {
 						final String key = m.group(1);
-						
+
 						final String userToken;
 						try {
 							JWSInput jwsInput = new JWSInput(key);
 							JsonWebToken webToken = jwsInput.readJsonContent(JsonWebToken.class);
-							
+
 							if (!webToken.isActive()) {
 								log.error("Token has expired");
 								response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Not authenticated");
 								return;
 							}
-							
+
 							userToken = (String) webToken.getOtherClaims().get("user");
 						}
 						catch (JWSInputException e) {
@@ -133,13 +133,13 @@ public class AuthenticationByPassFilter implements Filter {
 							response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Not authenticated");
 							return;
 						}
-						
+
 						if (userToken == null) {
 							log.error("Could not read user entry from token");
 							response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Not authenticated");
 							return;
 						}
-						
+
 						final String username;
 						try {
 							JWSInput jwsInput = new JWSInput(userToken);
@@ -148,7 +148,7 @@ public class AuthenticationByPassFilter implements Filter {
 								response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Not authenticated");
 								return;
 							}
-							
+
 							JsonWebToken webToken = jwsInput.readJsonContent(JsonWebToken.class);
 							username = webToken.getSubject();
 						}
@@ -157,7 +157,7 @@ public class AuthenticationByPassFilter implements Filter {
 							response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Not authenticated");
 							return;
 						}
-						
+
 						try {
 							Context.authenticate(new SmartTokenCredentials(username));
 							Context.getUserContext().setLocation(Context.getLocationService().getDefaultLocation());
@@ -172,10 +172,10 @@ public class AuthenticationByPassFilter implements Filter {
 				}
 			}
 		}
-		
+
 		filterChain.doFilter(request, response);
 	}
-	
+
 	@Override
 	public void destroy() {
 	}

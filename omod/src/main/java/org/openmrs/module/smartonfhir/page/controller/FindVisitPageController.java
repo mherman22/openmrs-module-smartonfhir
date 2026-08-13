@@ -31,35 +31,35 @@ import org.openmrs.ui.framework.page.PageModel;
 import org.springframework.web.bind.annotation.RequestParam;
 
 public class FindVisitPageController {
-	
+
 	public String get(UiSessionContext sessionContext, PageModel model, @RequestParam("app") AppDescriptor app,
 	        @SpringBean AdtService service, @SpringBean("visitService") VisitService visitService,
 	        @RequestParam("patientId") String patientId, @RequestParam("token") String token,
 	        UiSessionContext uiSessionContext, @SpringBean("visitTypeHelper") VisitTypeHelper visitTypeHelper)
 	        throws UnsupportedEncodingException {
-		
+
 		Patient patient = Context.getPatientService().getPatientByUuid(patientId);
-		
+
 		List<Visit> activeVisits = Context.getVisitService().getVisitsByPatient(patient);
 		model.addAttribute("visitSummaries", activeVisits);
-		
+
 		model.addAttribute("canViewVisits", Context.hasPrivilege(CoreAppsConstants.PRIVILEGE_PATIENT_VISITS));
-		
+
 		Map<Integer, Object> visitTypesWithAttr = new HashMap<Integer, Object>();
-		
+
 		List<VisitType> allVisitTypes = visitService.getAllVisitTypes();
 		for (VisitType type : allVisitTypes) {
 			Map<String, Object> typeAttr = visitTypeHelper.getVisitTypeColorAndShortName(type);
 			visitTypesWithAttr.put(type.getVisitTypeId(), typeAttr);
 		}
-		
+
 		model.addAttribute("visitTypesWithAttr", visitTypesWithAttr);
-		
+
 		String afterSelectedUrl = app.getConfig().get("afterSelectedUrl").getTextValue();
 		afterSelectedUrl = afterSelectedUrl.replace("{{patient.uuid}}", patientId).replace("{{token}}",
 		    URLEncoder.encode(token, StandardCharsets.UTF_8.name()));
 		model.addAttribute("afterSelectedUrl", afterSelectedUrl);
-		
+
 		return null;
 	}
 }

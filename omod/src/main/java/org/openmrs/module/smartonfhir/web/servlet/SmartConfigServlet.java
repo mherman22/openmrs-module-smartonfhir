@@ -23,15 +23,15 @@ import org.openmrs.module.smartonfhir.web.SmartConformance;
 
 @Slf4j
 public class SmartConfigServlet extends HttpServlet {
-	
+
 	private static final ObjectMapper objectMapper = new ObjectMapper();
-	
+
 	private SmartConformance smartConformance;
-	
+
 	@Override
 	public void init() {
 		final KeycloakConfig keycloakConfig = KeycloakConfigHolder.getKeycloakConfig();
-		
+
 		smartConformance = new SmartConformance();
 		smartConformance.setAuthorizationEndpoint(
 		    keycloakConfig.getAuthServerUrl() + "realms/" + keycloakConfig.getRealm() + "/protocol/openid-connect/auth");
@@ -45,7 +45,7 @@ public class SmartConfigServlet extends HttpServlet {
 		smartConformance.setCapabilities(new String[] { "launch-standalone", "launch-ehr", "client-public",
 		        "client-confidential-symmetric", "context-ehr-patient", "sso-openid-connect" });
 	}
-	
+
 	public void doGet(HttpServletRequest req, HttpServletResponse res) throws IOException {
 		res.setContentType("application/json");
 		res.setCharacterEncoding("UTF-8");

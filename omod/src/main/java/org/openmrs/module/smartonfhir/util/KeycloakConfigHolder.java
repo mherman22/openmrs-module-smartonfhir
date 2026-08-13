@@ -27,11 +27,11 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 @Slf4j
 public class KeycloakConfigHolder {
-	
+
 	private static final ObjectMapper objectMapper = new ObjectMapper();
-	
+
 	private static volatile KeycloakConfig keycloakConfig;
-	
+
 	public static KeycloakConfig getKeycloakConfig() {
 		if (keycloakConfig == null) {
 			synchronized (KeycloakConfigHolder.class) {
@@ -40,14 +40,14 @@ public class KeycloakConfigHolder {
 				}
 			}
 		}
-		
+
 		return keycloakConfig;
 	}
-	
+
 	@SneakyThrows
 	private static void loadKeycloakConfig() {
 		final File f = Paths.get(OpenmrsUtil.getApplicationDataDirectory(), "config", "smart-keycloak.json").toFile();
-		
+
 		if (f.canRead()) {
 			try (InputStream keycloakConfigStream = new BufferedInputStream(new FileInputStream(f))) {
 				keycloakConfig = objectMapper.readValue(keycloakConfigStream, KeycloakConfig.class);
@@ -57,15 +57,15 @@ public class KeycloakConfigHolder {
 				log.error("Could not load file [{}]", f.getPath(), e);
 			}
 		}
-		
+
 		final ResourceLoader resolver = new PathMatchingResourcePatternResolver();
 		final Resource resource = resolver.getResource("classpath:smart-keycloak.json");
-		
+
 		if (resource != null && resource.isReadable()) {
 			try (InputStream keycloakConfigStream = resource.getInputStream()) {
 				keycloakConfig = objectMapper.readValue(keycloakConfigStream, KeycloakConfig.class);
 			}
 		}
 	}
-	
+
 }

@@ -14,27 +14,27 @@ import org.openmrs.ui.framework.page.Redirect;
 import org.springframework.web.bind.annotation.RequestParam;
 
 public class SmartAppsRedirectPageController {
-	
+
 	public Redirect get(@RequestParam(value = "app") AppDescriptor app,
 	        @RequestParam(required = false, value = "patientId") String patientId,
 	        @RequestParam(required = false, value = "visitId") String visitId) {
-		
+
 		String launchUrl = app.getConfig().get("launchUrl").getTextValue();
 		String launchType = app.getConfig().get("launchType").getTextValue();
 		String launchContext = app.getConfig().get("launchContext").getTextValue();
 		String fhirVersion = app.getConfig().get("fhirVersion").getTextValue();
-		
+
 		// For EHR launch
 		if (launchType.equals("EHR")) {
 			return new Redirect("ms/smartEhrLaunchServlet?launchUrl=" + launchUrl + "&patientId=" + patientId + "&visitId="
 			        + visitId + "&launchContext=" + launchContext + "&fhirVersion=" + fhirVersion);
 		}
-		
+
 		// For Standalone launch
 		if (launchType.equals("standalone")) {
 			return new Redirect("ms/smartAppSelectorServlet?launchUrl=" + launchUrl + "&fhirVersion=" + fhirVersion);
 		}
-		
+
 		return new Redirect("ms/smartAppSelectorServlet?launchUrl=");
 	}
 }

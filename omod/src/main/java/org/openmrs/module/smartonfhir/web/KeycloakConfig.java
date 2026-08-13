@@ -19,22 +19,22 @@ import org.keycloak.representations.adapters.config.AdapterConfig;
 @Data
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class KeycloakConfig extends AdapterConfig {
-	
+
 	@JsonProperty(value = "realm", required = true)
 	private String realm;
-	
+
 	@JsonProperty(value = "auth-server-url", required = true)
 	private String authServerUrl;
-	
+
 	@JsonProperty(value = "ssl-required", required = false)
 	private String sslRequired;
-	
+
 	@JsonProperty(value = "resource", required = false)
 	private String resource;
-	
+
 	@JsonProperty(value = "public-client", required = false)
 	private String publicClient;
-	
+
 	@JsonProperty(value = "confidential-port", required = false)
 	private int confidentialPort;
 }

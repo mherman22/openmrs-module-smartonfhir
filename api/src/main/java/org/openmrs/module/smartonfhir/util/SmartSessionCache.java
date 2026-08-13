@@ -11,29 +11,42 @@ package org.openmrs.module.smartonfhir.util;
 
 import java.util.concurrent.TimeUnit;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.openmrs.module.smartonfhir.model.SmartSession;
 
 public class SmartSessionCache {
 
-	private static LoadingCache<String, SmartSession> cache;
+	/**
+	 * Built once, eagerly, and never reassigned.
+	 * <p>
+	 * This was a lazily initialised non-volatile static assigned from a constructor that runs per
+	 * request, so two threads racing at startup could build two caches and publish one: a handle issued
+	 * into the discarded cache then redeemed as "Unknown launch". Non-volatile publication also allowed
+	 * another thread to observe a partly constructed cache.
+	 */
+	private static final Cache<String, SmartSession> CACHE = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES)
+	        .maximumSize(500).recordStats().build();
 
-	public SmartSessionCache() {
-		if (cache == null) {
-			cache = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).maximumSize(500).recordStats()
-			        .build(key -> null);
-		}
+	/**
+	 * Removes the entry and returns what it held, in one operation.
+	 * <p>
+	 * Redemption used to be a {@code get} followed by a {@code clear}, which is single-use only when
+	 * single-threaded: two concurrent redemptions of one handle could both see a session and both
+	 * proceed.
+	 */
+	public SmartSession take(String key) {
+		return key == null ? null : CACHE.asMap().remove(key);
 	}
 
 	public boolean put(String key, SmartSession value) {
-		cache.put(key, value);
+		CACHE.put(key, value);
 		return Boolean.TRUE;
 	}
 
 	public SmartSession get(String key) {
 		try {
-			return cache.get(key);
+			return CACHE.getIfPresent(key);
 		}
 		catch (Exception e) {
 			return null;
@@ -41,7 +54,7 @@ public class SmartSessionCache {
 	}
 
 	public boolean clear(String key) {
-		cache.invalidate(key);
+		CACHE.invalidate(key);
 
 		return Boolean.TRUE;
 	}

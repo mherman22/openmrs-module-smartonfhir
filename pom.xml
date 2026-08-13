@@ -4,14 +4,14 @@
 
 	<groupId>org.openmrs.module</groupId>
 	<artifactId>smartonfhir</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
+	<version>2.0.0-SNAPSHOT</version>
 	<packaging>pom</packaging>
 	<name>SMART on FHIR</name>
 	<description>Implementation of SMART-on-FHIR for the FHIR2 module</description>
 
 	<issueManagement>
 		<system>JIRA</system>
-		<url>http://issues.openmrs.org/</url>
+		<url>https://openmrs.atlassian.net/jira/software/c/projects/FM2/issues</url>
 	</issueManagement>
 
 	<licenses>
@@ -29,9 +29,9 @@
 	<url>https://wiki.openmrs.org/display/projects/OpenMRS+FHIR+Module</url>
 
 	<scm>
-		<connection>scm:git:git@github.com:openmrs/openmrs-module-fhir2.git</connection>
-		<developerConnection>scm:git:git@github.com:openmrs/openmrs-module-fhir2.git</developerConnection>
-		<url>https://github.com/openmrs/openmrs-module-fhir2/</url>
+		<connection>scm:git:git@github.com:openmrs/openmrs-module-smartonfhir.git</connection>
+		<developerConnection>scm:git:git@github.com:openmrs/openmrs-module-smartonfhir.git</developerConnection>
+		<url>https://github.com/openmrs/openmrs-module-smartonfhir/</url>
 	</scm>
 
 	<modules>
@@ -98,6 +98,15 @@
 						<groupId>javax.servlet</groupId>
 						<artifactId>jsp-api</artifactId>
 					</exclusion>
+					<!-- openmrs-web 2.8.8 pulls velocity-tools, whose commons-logging brings
+					     javax.servlet:servlet-api 2.3 at compile scope. That shadows
+					     javax.servlet-api 4.0.1 and hides everything added since Servlet 2.3,
+					     including HttpServletRequest.getServletContext() and
+					     HttpServletResponse.setCharacterEncoding(). -->
+					<exclusion>
+						<groupId>javax.servlet</groupId>
+						<artifactId>servlet-api</artifactId>
+					</exclusion>
 				</exclusions>
 			</dependency>
 			<dependency>
@@ -121,6 +130,15 @@
 					<exclusion>
 						<groupId>javax.servlet</groupId>
 						<artifactId>jsp-api</artifactId>
+					</exclusion>
+					<!-- openmrs-web 2.8.8 pulls velocity-tools, whose commons-logging brings
+					     javax.servlet:servlet-api 2.3 at compile scope. That shadows
+					     javax.servlet-api 4.0.1 and hides everything added since Servlet 2.3,
+					     including HttpServletRequest.getServletContext() and
+					     HttpServletResponse.setCharacterEncoding(). -->
+					<exclusion>
+						<groupId>javax.servlet</groupId>
+						<artifactId>servlet-api</artifactId>
 					</exclusion>
 				</exclusions>
 			</dependency>
@@ -152,7 +170,7 @@
 			<dependency>
 				<groupId>org.openmrs.module</groupId>
 				<artifactId>fhir2-api</artifactId>
-				<version>1.0.0-SNAPSHOT</version>
+				<version>${fhir2Version}</version>
 				<scope>provided</scope>
 			</dependency>
 			<dependency>
@@ -256,7 +274,7 @@
 			<dependency>
 				<groupId>org.openmrs.module</groupId>
 				<artifactId>fhir2-omod</artifactId>
-				<version>1.2.1</version>
+				<version>${fhir2Version}</version>
 				<scope>provided</scope>
 			</dependency>
 			<dependency>
@@ -574,7 +592,7 @@
 				<plugin>
 					<groupId>org.jacoco</groupId>
 					<artifactId>jacoco-maven-plugin</artifactId>
-					<version>0.8.2</version>
+					<version>0.8.12</version>
 					<executions>
 						<execution>
 							<goals>
@@ -593,7 +611,7 @@
 				<plugin>
 					<groupId>net.revelc.code.formatter</groupId>
 					<artifactId>formatter-maven-plugin</artifactId>
-					<version>2.14.0</version>
+					<version>2.24.1</version>
 					<configuration>
 						<lineEnding>LF</lineEnding>
 						<configFile>eclipse/OpenMRSFormatter.xml</configFile>
@@ -616,7 +634,7 @@
 				<plugin>
 					<groupId>net.revelc.code</groupId>
 					<artifactId>impsort-maven-plugin</artifactId>
-					<version>1.5.0</version>
+					<version>1.12.0</version>
 					<configuration>
 						<groups>javax, java, *</groups>
 						<removeUnused>true</removeUnused>
@@ -634,13 +652,16 @@
 	</build>
 
 	<properties>
-		<maven.compiler.source>1.8</maven.compiler.source>
-		<maven.compiler.target>1.8</maven.compiler.target>
+		<!-- RefApp 3.7.1 runs on Amazon Corretto 21. openmrs-core still emits Java 8
+		     bytecode for the benefit of older consumers, which constrains core, not us. -->
+		<maven.compiler.release>17</maven.compiler.release>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.build.outputEncoding>UTF-8</project.build.outputEncoding>
-		<lombokVersion>1.18.18</lombokVersion>
-		<openmrsPlatformVersion>2.3.0</openmrsPlatformVersion>
-		<openmrsPlatformToolsVersion>2.4.0</openmrsPlatformToolsVersion>
+		<!-- 1.18.30 is the first release that can run on JDK 21 -->
+		<lombokVersion>1.18.36</lombokVersion>
+		<openmrsPlatformVersion>2.8.8</openmrsPlatformVersion>
+		<openmrsPlatformToolsVersion>2.8.8</openmrsPlatformToolsVersion>
+		<fhir2Version>4.2.0</fhir2Version>
 		<keycloakVersion>14.0.0</keycloakVersion>
 		<uiframeworkVersion>3.15.0</uiframeworkVersion>
 		<appframeworkVersion>2.9</appframeworkVersion>

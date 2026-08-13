@@ -51,7 +51,8 @@ public class SmartAccessConfirmation extends HttpServlet {
 		}
 
 		// Single use, and only by the user the handle was issued to.
-		SmartSession smartSession = new SmartLaunchContextService().redeem(launchId, user.getUsername());
+		SmartSession smartSession = new SmartLaunchContextService().redeem(launchId,
+		    SmartLaunchContextService.identify(user));
 
 		if (smartSession == null) {
 			res.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unknown launch");

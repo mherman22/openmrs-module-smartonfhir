@@ -13,6 +13,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 import lombok.extern.slf4j.Slf4j;
+import org.openmrs.User;
 import org.openmrs.module.smartonfhir.model.SmartSession;
 
 /**
@@ -64,6 +65,16 @@ public class SmartLaunchContextService {
 	 * @return the handle to hand to the app as the {@code launch} parameter
 	 */
 	public String issue(String username, String patientUuid, String visitUuid) {
+		// An owner is what makes a handle refusable. A blank one used to be stored as-is, and the
+		// ownership check below read a null owner as "matches everybody" rather than "matches nobody":
+		// a launch started by an account with no username -- which is how OpenMRS stores its own admin
+		// account -- minted a handle any authenticated user could redeem. Callers pass systemId when
+		// there is no username; if they pass neither there is nothing to bind to, so refuse.
+		if (username == null || username.trim().isEmpty()) {
+			log.error("Refusing to issue a SMART launch handle with no owner; the launch cannot be attributed");
+			return null;
+		}
+
 		SmartSession session = new SmartSession();
 		session.setPatientUuid(patientUuid);
 		session.setVisitUuid(visitUuid);
@@ -91,24 +102,44 @@ public class SmartLaunchContextService {
 			return null;
 		}
 
-		SmartSession session = cache.get(handle);
+		// One operation, so two concurrent redemptions cannot both succeed: whichever thread removes the
+		// entry gets the session and the other gets null. It also spends the handle before the ownership
+		// check below, so one offered by the wrong user is not left available for another attempt.
+		SmartSession session = cache.take(handle);
 
 		if (session == null) {
 			log.warn("A SMART launch handle was presented that is unknown, expired, or already used");
 			return null;
 		}
 
-		// Removed before the ownership check, so a handle offered by the wrong user is spent rather
-		// than left available for another attempt.
-		cache.clear(handle);
-
-		if (session.getUsername() != null && !session.getUsername().equals(username)) {
+		// Objects.equals, so a handle with no recorded owner refuses everyone rather than admitting
+		// everyone. issue() will not create one, and this is the second line of defence.
+		if (!java.util.Objects.equals(session.getUsername(), username)) {
 			log.warn("A SMART launch handle issued to '{}' was presented by '{}'; refusing it", session.getUsername(),
 			    username);
 			return null;
 		}
 
 		return session;
+	}
+
+	/**
+	 * How a launch identifies the clinician who started it.
+	 * <p>
+	 * OpenMRS does not require a username: its own {@code admin} account has none and is identified by
+	 * its systemId, and any user created without one is stored the same way. Both ends of a launch have
+	 * to agree on which of the two they use, or a handle is issued under one identity and presented
+	 * under the other, so both call this.
+	 *
+	 * @return the username, or the systemId when there is no username, or null when the user has
+	 *         neither
+	 */
+	public static String identify(User user) {
+		if (user == null) {
+			return null;
+		}
+
+		return user.getUsername() != null && !user.getUsername().trim().isEmpty() ? user.getUsername() : user.getSystemId();
 	}
 
 	private String newHandle() {

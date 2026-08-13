@@ -90,7 +90,8 @@ public class SmartEhrLaunchServlet extends HttpServlet {
 
 		// The handle is opaque and single-use. It used to be the patient or visit uuid, which both
 		// disclosed the context it stands for and let anyone holding a uuid forge a launch.
-		final String launchHandle = new SmartLaunchContextService().issue(user.getUsername(), patientId, visitId);
+		final String launchHandle = new SmartLaunchContextService().issue(SmartLaunchContextService.identify(user),
+		    patientId, visitId);
 
 		final String separator = app.getLaunchUrl().contains("?") ? "&" : "?";
 		final String target = app.getLaunchUrl() + separator + "iss="

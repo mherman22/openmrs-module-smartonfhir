@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -31,10 +30,10 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.openmrs.api.context.Context;
-import org.openmrs.api.context.ContextAuthenticationException;
 import org.openmrs.module.smartonfhir.auth.SmartTokenCredentials;
 import org.openmrs.module.smartonfhir.util.SmartLaunchTokens;
 import org.openmrs.module.smartonfhir.util.SmartSecretKeyHolder;
+import org.openmrs.module.smartonfhir.web.util.SmartLaunchTargets;
 
 @Slf4j
 public class AuthenticationByPassFilter implements Filter {
@@ -106,12 +105,21 @@ public class AuthenticationByPassFilter implements Filter {
 		if (!Context.isAuthenticated()) {
 			final String tokenParam = request.getParameter("token");
 
+			// Read exactly as SmartLaunchOptionSelected reads it. This used to search the
+			// container-decoded parameter for "key=" while the servlet decoded once more before parsing,
+			// so a doubly-encoded key was invisible here and visible there: this filter attempted no
+			// authentication and the servlet proceeded anyway. It also matched any parameter merely
+			// ending in "key", so ?monkey=x&key=real yielded x.
+			final String key = SmartLaunchTargets.parameterFrom(SmartLaunchTargets.decodeLaunchTarget(tokenParam), "key");
+
 			if (tokenParam != null) {
-				int keyPos = tokenParam.indexOf("key=");
-				if (keyPos >= 0) {
-					Matcher m = KEY_PARAM.matcher(tokenParam.substring(keyPos));
-					if (m.find()) {
-						final String key = m.group(1);
+				if (key == null) {
+					// Left silently to the chain before, so an operator debugging a launch that dies at the
+					// picker had nothing to look at. Still fail-closed: the servlets check
+					// Context.isAuthenticated() themselves.
+					log.warn("A request to a launch URL carried a token with no readable key; not authenticating it");
+				} else {
+					{
 
 						// The outer token is the authorization server's action token, signed with a key
 						// this module does not hold, so it is read but not trusted. It carries a nested
@@ -150,11 +158,19 @@ public class AuthenticationByPassFilter implements Filter {
 
 						try {
 							Context.authenticate(new SmartTokenCredentials(username));
-							Context.getUserContext().setLocation(Context.getLocationService().getDefaultLocation());
+
+							// Marked immediately, before anything that can throw. The teardown below keys off
+							// this attribute, and setting it after the location lookup meant an
+							// APIAuthenticationException from getDefaultLocation -- a sibling of
+							// ContextAuthenticationException, so not caught here before -- left the session
+							// authenticated and unmarked, which is to say authenticated forever.
 							request.getSession().setAttribute(SMART_AUTH_BYPASS, true);
+
+							Context.getUserContext().setLocation(Context.getLocationService().getDefaultLocation());
 						}
-						catch (ContextAuthenticationException e) {
+						catch (Exception e) {
 							log.error("Error while logging in as user {}", username, e);
+							Context.logout();
 							response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Not authenticated");
 							return;
 						}

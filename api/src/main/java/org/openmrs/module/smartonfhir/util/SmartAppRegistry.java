@@ -51,9 +51,35 @@ public class SmartAppRegistry {
 
 	private static volatile boolean loadAttempted = false;
 
-	/** @return the registered apps, in the order the file lists them. Never null. */
+	/**
+	 * @return the registered apps, in the order the file lists them, as copies. Never null.
+	 *         <p>
+	 *         Copies, because this used to hand out the stored entries themselves: any caller could do
+	 *         {@code getApps().get(0).setLaunchUrl("https://evil/")} and rewrite the deployment's
+	 *         allowlist process-wide. That is a poor property for the type whose whole purpose is
+	 *         deciding where a launch may be sent.
+	 */
 	public static List<SmartApp> getApps() {
-		return new ArrayList<>(registry().values());
+		List<SmartApp> copies = new ArrayList<>();
+
+		for (SmartApp app : registry().values()) {
+			copies.add(copyOf(app));
+		}
+
+		return copies;
+	}
+
+	/** @return the app with this id as a copy, or null if no such app is registered. */
+	private static SmartApp copyOf(SmartApp app) {
+		SmartApp copy = new SmartApp();
+		copy.setId(app.getId());
+		copy.setName(app.getName());
+		copy.setDescription(app.getDescription());
+		copy.setLaunchUrl(app.getLaunchUrl());
+		copy.setClientId(app.getClientId());
+		copy.setLaunchContext(app.getLaunchContext());
+
+		return copy;
 	}
 
 	/** @return the app with this id, or null if no such app is registered. */
@@ -62,7 +88,9 @@ public class SmartAppRegistry {
 			return null;
 		}
 
-		return registry().get(id.trim());
+		SmartApp app = registry().get(id.trim());
+
+		return app == null ? null : copyOf(app);
 	}
 
 	/**

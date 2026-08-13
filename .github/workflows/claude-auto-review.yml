@@ -57,6 +57,25 @@ jobs:
       PR: ${{ github.event.pull_request.number || inputs.pr }}
 
     steps:
+      # The `if:` above proves only that the *trigger* was authorized -- that someone with
+      # write access pressed the button -- which says nothing about the code being built.
+      # A manual run carries full secrets, and refs/pull/<n>/head resolves to the fork's
+      # own commit, so dispatching against a fork's pull request would build attacker
+      # controlled pom.xml and plugins with the review credential in the environment.
+      # Checked before the checkout, so fork code never lands on the runner.
+      - name: Refuse a pull request from a fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          head_repo="$(gh api "repos/$REPO/pulls/$PR" --jq .head.repo.full_name)"
+          if [ "$head_repo" != "$REPO" ]; then
+            echo "::error::PR #$PR comes from $head_repo. This workflow builds the code it reviews, so it only runs on branches in $REPO."
+            exit 1
+          fi
+          echo "PR #$PR is a branch in $REPO."
+
       - name: Check out the pull request head
         uses: actions/checkout@v7
         with:

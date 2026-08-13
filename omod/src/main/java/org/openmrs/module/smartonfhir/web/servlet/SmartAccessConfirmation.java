@@ -59,7 +59,7 @@ public class SmartAccessConfirmation extends HttpServlet {
 			return;
 		}
 
-		JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder().subject(user.getUsername());
+		JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder().subject(SmartLaunchContextService.identify(user));
 
 		if (smartSession.getPatientUuid() != null) {
 			claims.claim(PATIENT_NAME, smartSession.getPatientUuid());

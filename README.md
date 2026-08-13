@@ -301,18 +301,62 @@ mvn clean install
 
 ## Configuration
 
-Two files under the OpenMRS application data directory:
+Three files under the OpenMRS application data directory, and two runtime properties. Every key below
+is spelled as the code binds it: the config classes ignore unknown properties, so a misspelling is
+discarded in silence rather than reported.
 
-`config/smart-oauth2.json` — the authorization server. `issuer` is required; endpoints are derived
-from it when absent. `advertisedJwksUri` is what apps are told, when that differs from where this
-server fetches keys.
+`config/smart-oauth2.json` — the authorization server. **`issuer` and `audience` are both required**;
+the file is discarded entirely when either is missing, which leaves one line in the log at startup and
+every SMART endpoint dark. Endpoints are derived from the issuer when absent. All keys are
+hyphenated, not camelCase:
+
+```json
+{
+  "issuer": "https://keycloak.example.org/realms/openmrs",
+  "audience": "https://openmrs.example.org/openmrs/ws/fhir2/R4",
+  "advertised-jwks-uri": "https://keycloak.example.org/realms/openmrs/protocol/openid-connect/certs",
+  "allowed-clock-skew-seconds": 30
+}
+```
+
+`advertised-jwks-uri` is what apps are told, for when that differs from where this server fetches keys
+— a container-internal hostname reaches Keycloak but not a browser. Spelling it `advertisedJwksUri`
+produces exactly the unreachable-`jwks_uri` failure the field exists to prevent.
 
 `config/smart-secret-key.json` — the secret shared with the authorization server, used to sign the
 launch tokens the two exchange. Without a usable key no launch can complete, and the module says so
 rather than proceeding.
 
-The [distribution repository](https://github.com/mherman22/openmrs-distro-smartonfhir) generates both
-and brings up a working stack.
+`config/smart-apps.json` — the apps that may be launched from a patient chart, and where each one's
+launch is sent. An EHR launch names an app by id; an app absent from this file cannot be launched at
+all.
+
+```json
+{
+  "apps": [
+    {
+      "id": "growth-chart",
+      "name": "Growth Chart",
+      "clientId": "growth-chart",
+      "launchUrl": "https://growth.example.org/launch",
+      "launchContext": "patient"
+    }
+  ]
+}
+```
+
+**Register the bearer scheme** in `openmrs-runtime.properties`, or every FHIR request carrying a SMART
+token answers 401 with nothing to say why:
+
+```properties
+authentication.scheme=smartBearer
+authentication.scheme.smartBearer.type=org.openmrs.module.smartonfhir.web.smart.SmartBearerTokenAuthenticationScheme
+```
+
+`smartBearer` is `SmartBearerCredentials.SCHEME_ID`; the two must match.
+
+The [distribution repository](https://github.com/mherman22/openmrs-distro-smartonfhir) writes all three
+files and both properties, and brings up a working stack.
 
 ## License
 

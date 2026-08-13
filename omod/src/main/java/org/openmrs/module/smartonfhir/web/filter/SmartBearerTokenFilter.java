@@ -22,7 +22,6 @@ import java.io.IOException;
 
 import lombok.extern.slf4j.Slf4j;
 import org.openmrs.api.context.Context;
-import org.openmrs.api.context.ContextAuthenticationException;
 import org.openmrs.module.smartonfhir.auth.SmartBearerCredentials;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier;
 import org.openmrs.module.smartonfhir.util.SmartAccessTokenVerifier.SmartAccessToken;
@@ -85,7 +84,12 @@ public class SmartBearerTokenFilter implements Filter {
 		}
 
 		if (Context.isAuthenticated()) {
-			// Already authenticated by something earlier in the chain; do not disturb it.
+			// Already authenticated by something earlier in the chain -- a session cookie, or basic auth --
+			// so that identity is left alone. The token is not verified and no launch context is set, which
+			// means an app believing itself confined to a granted patient is in fact running with the cookie
+			// user's full privileges. Logged, because nothing else would say so.
+			log.warn("A SMART access token was presented on an already-authenticated request; it was not used, "
+			        + "and no launch context is available to this request");
 			chain.doFilter(req, res);
 			return;
 		}
@@ -107,14 +111,18 @@ public class SmartBearerTokenFilter implements Filter {
 			return;
 		}
 
-		boolean authenticated = false;
+		// Any exception, not only ContextAuthenticationException. UserContext.authenticate sets the user
+		// before it sets location and locale, and those two calls sit outside its own try block: an
+		// APIException from either -- APIAuthenticationException is a sibling, not a subclass -- escaped
+		// this catch with the context already logged in, leaving a session minted from a bearer token and
+		// replayable without one.
 		try {
 			Context.authenticate(new SmartBearerCredentials(SmartBearerCredentials.SCHEME_ID, token));
-			authenticated = true;
 		}
-		catch (ContextAuthenticationException e) {
+		catch (Exception e) {
 			log.warn("A valid SMART access token named '{}', who could not be authenticated in OpenMRS", token.getUsername(),
 			    e);
+			endBearerSession();
 			unauthorized(response, "invalid_token");
 			return;
 		}
@@ -127,14 +135,14 @@ public class SmartBearerTokenFilter implements Filter {
 			chain.doFilter(req, res);
 		}
 		finally {
-			if (authenticated) {
-				// Keeps bearer authentication per-request: see the class comment.
-				try {
-					Context.logout();
-				}
-				catch (Exception e) {
-					log.warn("Could not close the session opened for a SMART access token", e);
-				}
+			// Keeps bearer authentication per-request: see the class comment. Asks the context what it
+			// actually holds, rather than trusting a local flag that was set after authenticate() returned
+			// and so was false on exactly the paths where a session had already been established.
+			try {
+				endBearerSession();
+			}
+			catch (Exception e) {
+				log.warn("Could not close the session opened for a SMART access token", e);
 			}
 		}
 	}
@@ -144,6 +152,13 @@ public class SmartBearerTokenFilter implements Filter {
 	 * {@code WWW-Authenticate}, leaving a client unable to tell that refreshing its token was the
 	 * remedy.
 	 */
+	/** Ends a session this filter created, if the context in fact holds one. */
+	private void endBearerSession() {
+		if (Context.isAuthenticated()) {
+			Context.logout();
+		}
+	}
+
 	private void unauthorized(HttpServletResponse response, String error) throws IOException {
 		if (response.isCommitted()) {
 			return;

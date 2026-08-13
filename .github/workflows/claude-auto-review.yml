@@ -83,6 +83,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         with:
+          # Set exactly one of these as a repository secret. CLAUDE_CODE_OAUTH_TOKEN comes
+          # from `claude setup-token` and bills against a Pro/Max subscription;
+          # ANTHROPIC_API_KEY is a console key billed as API usage. Both are passed because
+          # the fork uses a subscription token while the openmrs organisation provides an
+          # API key -- whichever secret exists is the one that gets used.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Post as github-actions[bot] rather than exchanging OIDC for a Claude App token.
           github_token: ${{ github.token }}

@@ -93,9 +93,13 @@ public class AuthenticationByPassFilter implements Filter {
 		if (!isValidRequest) {
 			HttpSession session = request.getSession(false);
 			if (session != null && session.getAttribute(SMART_AUTH_BYPASS) != null) {
-				session.invalidate();
+				// Log out and drop the marker; do not invalidate. Invalidating leaves the
+				// browser holding a cookie for a session that no longer exists, and the only
+				// reason it did not bite here was the getSession() that used to follow it
+				// minting a replacement. SmartLaunchOptionSelected ends the same session the
+				// same way.
 				Context.logout();
-				request.getSession();
+				session.removeAttribute(SMART_AUTH_BYPASS);
 			}
 
 			filterChain.doFilter(request, response);

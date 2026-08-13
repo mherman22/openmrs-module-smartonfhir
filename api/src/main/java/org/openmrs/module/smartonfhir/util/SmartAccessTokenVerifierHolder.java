@@ -53,7 +53,13 @@ public class SmartAccessTokenVerifierHolder {
 			synchronized (SmartAccessTokenVerifierHolder.class) {
 				if (!attempted) {
 					build();
-					attempted = true;
+
+					// Only latched once there is something to keep. It used to latch either way, so a single
+					// transient failure to reach the authorization server -- a slow start, a DNS blip --
+					// left this null and answered invalid_token to every FHIR request for the life of the
+					// JVM, with nothing in production able to reset it. Now a failed attempt is retried by
+					// the next request.
+					attempted = verifier != null;
 				}
 			}
 		}

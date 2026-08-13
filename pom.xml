@@ -78,6 +78,21 @@
 
 	<dependencyManagement>
 		<dependencies>
+			<!-- Token verification. The only third-party jar this module ships: it keeps Keycloak out
+			     of the dependency graph entirely, so a different authorization server is configuration
+			     rather than a rewrite. -->
+			<dependency>
+				<groupId>com.nimbusds</groupId>
+				<artifactId>nimbus-jose-jwt</artifactId>
+				<version>${nimbusVersion}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.junit</groupId>
+				<artifactId>junit-bom</artifactId>
+				<version>${junitVersion}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
 			<dependency>
 				<groupId>org.openmrs.api</groupId>
 				<artifactId>openmrs-api</artifactId>
@@ -634,6 +649,8 @@
 		<openmrsPlatformVersion>2.8.8</openmrsPlatformVersion>
 		<openmrsPlatformToolsVersion>2.8.8</openmrsPlatformToolsVersion>
 		<fhir2Version>4.2.0</fhir2Version>
+		<nimbusVersion>9.48</nimbusVersion>
+		<junitVersion>5.11.4</junitVersion>
 		<keycloakVersion>14.0.0</keycloakVersion>
 		<caffeineVersion>2.8.2</caffeineVersion>
 	</properties>

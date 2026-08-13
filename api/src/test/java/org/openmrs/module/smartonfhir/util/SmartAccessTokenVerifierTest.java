@@ -22,8 +22,11 @@ import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.OctetSequenceKey;
 import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.gen.OctetSequenceKeyGenerator;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
@@ -59,6 +62,8 @@ class SmartAccessTokenVerifierTest {
 	/** A key the authorization server does not hold, for forgery attempts. */
 	private static RSAKey attackerKey;
 
+	private static OctetSequenceKey octKey;
+
 	private static SmartAccessTokenVerifier verifier;
 
 	@BeforeAll
@@ -67,7 +72,14 @@ class SmartAccessTokenVerifierTest {
 		attackerKey = new RSAKeyGenerator(2048).keyID("attacker").generate();
 
 		// Only the server's public key is published, exactly as a real JWKS would be.
-		JWKSource<SecurityContext> published = new ImmutableJWKSet<>(new JWKSet(serverKey.toPublicJWK()));
+		// An HMAC key is published alongside the RSA one deliberately. With only an RSA key, an HS256
+		// token is refused for having no key of a matching type, so PERMITTED_ALGORITHMS is never what
+		// refuses it -- and the algorithm-confusion test below passed even with HS256 added to that
+		// whitelist. Publishing an oct key makes the whitelist load-bearing.
+		octKey = new OctetSequenceKeyGenerator(256).keyID("hmac").generate();
+
+		JWKSource<SecurityContext> published = new ImmutableJWKSet<>(
+		        new JWKSet(Arrays.asList((JWK) serverKey.toPublicJWK(), (JWK) octKey)));
 		verifier = new SmartAccessTokenVerifier(config(), published);
 	}
 
@@ -167,6 +179,22 @@ class SmartAccessTokenVerifierTest {
 			jwt.sign(new MACSigner(Arrays.copyOf(publicKeyAsSecret, Math.max(32, publicKeyAsSecret.length))));
 
 			assertNull(verifier.verify(jwt.serialize()), "an HMAC-signed access token must never be accepted");
+		}
+
+		/**
+		 * Distinct from the case above: this one names a key the server really does publish and really
+		 * would verify with, so the only thing left to refuse it is the algorithm whitelist. Adding
+		 * {@code HS256} to {@code PERMITTED_ALGORITHMS} makes this test fail, which is the property the
+		 * case above cannot check.
+		 */
+		@Test
+		@DisplayName("signed with HMAC using a key the server publishes")
+		void hmacSignedWithAPublishedKey() throws Exception {
+			SignedJWT jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.HS256).keyID(octKey.getKeyID()).build(),
+			        validClaims().build());
+			jwt.sign(new MACSigner(octKey));
+
+			assertNull(verifier.verify(jwt.serialize()), "only asymmetric algorithms may be accepted");
 		}
 
 		@Test

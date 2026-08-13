@@ -1,0 +1,19 @@
+name: Claude PR Review
+
+# On demand only: it runs when a reviewer comments "@claude review" on a pull request, never
+# automatically when one opens. The shared workflow gates on membership of the openmrs /dev/3
+# and above teams, and needs two org-level secrets (ANTHROPIC_API_KEY, DEV_STAGE_READ_TOKEN)
+# that exist in the openmrs organisation. On a fork the trigger phrase will therefore fail
+# rather than review; the file is here so it works the moment this lands upstream.
+on:
+  issue_comment:
+    types: [ created ]
+
+jobs:
+  review:
+    uses: openmrs/openmrs-contrib-gha-workflows/.github/workflows/claude-pr-review.yml@main
+    secrets: inherit
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write

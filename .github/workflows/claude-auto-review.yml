@@ -71,6 +71,8 @@ jobs:
           # tr strips the newlines the contents API wraps its base64 in.
           if gh api "repos/$REPO/contents/$ADDENDUM_PATH?ref=$BASE_SHA" \
                --jq .content 2>/dev/null | tr -d '\n' | base64 -d >> "$dest"; then
+            # A partial or garbled append would silently become the methodology.
+            grep -q "name: smartonfhir-review" "$dest"
             echo "Appended this repo's addendum from $BASE_SHA."
           else
             echo "::warning::No $ADDENDUM_PATH on the base commit; reviewing with the upstream methodology only."

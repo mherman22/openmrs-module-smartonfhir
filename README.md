@@ -91,7 +91,7 @@ the discovery document is not served at all rather than served with guesses.
 {
   "issuer": "https://keycloak.example.org/realms/openmrs",
   "audience": "https://openmrs.example.org/openmrs/ws/fhir2/R4",
-  "advertised-jwks-uri": "https://keycloak.example.org/realms/openmrs/protocol/openid-connect/certs",
+  "advertisedJwksUri": "https://keycloak.example.org/realms/openmrs/protocol/openid-connect/certs",
   "allowed-clock-skew-seconds": 30
 }
 ```

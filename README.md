@@ -187,71 +187,217 @@ should name your issuer, and its `capabilities` should list `launch-standalone`.
 | `GET /ms/smartAccessConfirmation?token=` | The launch-access confirmation screen, ported from 1.x. |
 | filter on `/ws/fhir2*` | Verifies a `Bearer` token and authenticates the request. Also the CORS headers the FHIR API needs. |
 
-## How a launch works
+## How OpenMRS and Keycloak fit together
 
-```mermaid
-sequenceDiagram
-    participant App as SMART app
-    participant KC as Authorization server
-    participant M as This module
-    participant P as Patient picker
-    participant F as FHIR2
+Neither server calls the other. Every exchange between them travels as a browser redirect, and the
+trust between them rests on two separate mechanisms pointing in opposite directions:
 
-    App->>KC: /authorize (aud, PKCE S256, launch/patient)
-    KC->>KC: does aud name this FHIR server?
-    KC->>KC: clinician signs in
-    KC->>M: 302 /ms/smartPatientSelection?token=...
-    M->>M: bypass filter authenticates from the token
-    M->>P: 302 to the picker (session now exists)
-    P->>M: /ms/smartLaunchOptionSelected?token, patientId
-    M->>M: sign the choice; end the session the launch created
-    M->>KC: 302 action token
-    KC->>App: 302 redirect_uri?code=...
-    App->>KC: exchange code + PKCE verifier
-    KC->>App: access token + patient in the token response
-    App->>F: GET /ws/fhir2/R4/Patient/{id} (Bearer)
-    F->>App: the record
+| | Held by OpenMRS | Held by the authorization server | Used for |
+|---|---|---|---|
+| **A shared HMAC secret** | `config/smart-secret-key.json` | the authenticator's config in the realm | OpenMRS asserting *who the clinician is* during a launch |
+| **Published RSA keys (JWKS)** | fetched, never held | the private half | this module verifying access tokens on FHIR calls |
+
+The secret is the interesting one: it is an **authentication credential**, not a checksum. Anything
+that can sign with it can assert any username to the authorization server without a password. That is
+why the module refuses keys shorter than 256 bits, and why launch tokens live five minutes.
+
+## The EHR launch, on the wire
+
+A clinician looking at a chart clicks an app and lands in it, already on that patient, without typing
+a password. Six hops, captured from a running stack (values redacted, shape intact):
+
+```http
+302 /openmrs/ms/smartEhrLaunchServlet?appId=test-app&patientId=c3ab5d9b-…
+302 http://localhost:3000/?iss=…%2Fws%2Ffhir2%2FR4&launch=<handle>
+302 …/realms/openmrs/protocol/openid-connect/auth?client_id=smartClient&response_type=code
+    &scope=openid+launch+fhirUser+patient%2FPatient.rs&aud=…%2Fws%2Ffhir2%2FR4
+    &code_challenge=<challenge>&code_challenge_method=S256&launch=<handle>
+302 /openmrs/smartonfhir/smartAccessConfirmation?token=…%26app-token%3D%7BAPP_TOKEN%7D&launch=<handle>
+302 …/realms/openmrs/login-actions/authenticate?session_code=…&app-token=<signed launch token>
+200 http://localhost:3000/?state=…&code=<authorization code>
 ```
 
-An EHR launch skips the first half: the chart calls `/ms/smartEhrLaunchServlet` with the patient
-already known, this module issues a launch handle and redirects to the app, and the app presents that
-handle to the authorization server as its `launch` parameter.
+**Hop 1 — the module issues a handle.** The chart names an app and a patient; the module answers with
+an opaque, single-use, 256-bit handle bound to this clinician. Deliberately not the patient's uuid:
+that is guessable, discloses the context it exists to hide, and collides when two launches run for the
+same patient.
 
-Reading a patient with a token, once launched:
+**Hop 2 — the app learns almost nothing.** It receives `iss` and `launch`. Not the patient.
 
-```bash
-curl -H "Authorization: Bearer $ACCESS_TOKEN" \
-     https://openmrs.example.org/openmrs/ws/fhir2/R4/Patient/$PATIENT_ID
+**Hop 3 — the app starts OAuth2.** `response_type=code` only, PKCE `S256`, and an `aud` naming the FHIR
+server it intends to read. All three are SMART 2.x requirements.
+
+**Hops 4 and 5 — the EHR vouches.** This is the part with no equivalent in a plain OIDC flow. Rather
+than showing a login form, the authorization server redirects the browser *back into OpenMRS*, handing
+it the URL to return to with an unfilled slot in it:
+
+```java
+// SmartLaunchAccessAuthenticator, in the Keycloak plugin
+final String accessCode = context.generateAccessCode();
+final String actionUrl  = context.getActionUrl(accessCode).toString();
+final String submitUrl  = actionUrl + "&app-token={APP_TOKEN}";
 ```
 
-The token is proof for that one request, not a login — the session it creates is discarded when the
-request ends.
+Because that redirect goes to an OpenMRS URL, the browser attaches the **OpenMRS session cookie**, so
+the module knows who is signed in without asking anyone. It redeems the handle and signs a token:
 
-## How it is built, and why
+```java
+// SmartAccessConfirmation
+SmartSession smartSession = new SmartLaunchContextService().redeem(launchId,
+    SmartLaunchContextService.identify(user));          // single use, and only by its owner
 
-**The launch lands on a servlet, never straight on a frontend route.**
-`SmartPatientSelectionServlet` exists only to be redirected to. The O3 app shell renders **no** route
-without a session — it redirects to the login page instead, discarding the launch token in the URL.
-Pointing the authorization server at the picker's route therefore cannot work, even though it passes
-when driven with `curl`. The servlet sits behind the bypass filter, so the token becomes a session
-*before* anything is asked to render.
+JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
+    .subject(SmartLaunchContextService.identify(user)); // falls back to system_id: admin has no username
+claims.claim(PATIENT_NAME, smartSession.getPatientUuid());
+```
 
-**Launch context is a random handle, not the patient's identifier.**
-`SmartLaunchContextService` issues 256-bit URL-safe handles, single-use and bound to the clinician they
-were issued to. An earlier design keyed the cache by patient UUID, so two launches for the same patient
-collided. A refused redemption still consumes the handle, so a guessed handle cannot be probed against
-different usernames.
+which decodes to exactly this:
 
-**Bearer authentication does not survive the request.**
-`SmartBearerTokenFilter` is mapped to the FHIR API alone and logs out in a `finally`. The filter it
-replaces was mapped to every request in the webapp.
+```json
+{ "alg": "HS256" }
+{ "sub": "doctor", "patient": "c3ab5d9b-…", "iat": 1786648219, "exp": 1786648519 }
+```
 
-**Tokens are verified against published keys, never a shared secret.**
-`SmartAccessTokenVerifier` permits asymmetric algorithms only, fetches JWKS through `JWKSourceBuilder`
-(cached and rate-limited), requires `exp` rather than merely honouring it when present, and treats
-`aud` as **membership** per RFC 7519 §4.1.3 — Keycloak issues multi-audience tokens, and exact string
-equality rejected them.
+Five minutes, HMAC-SHA256, signed with the shared secret. The browser carries it back into the slot,
+and the authorization server checks **the signature, not the session** — it never sees the OpenMRS
+cookie. Cookie domains and cross-site restrictions between the two are irrelevant here, which is worth
+knowing before troubleshooting in that direction.
 
+**Why no login form appears.** The realm's browser flow decides it, by ordering:
+
+```
+SMART browser flow
+  REQUIRED     smart-audience-validator          ← aud is checked before anything else
+  REQUIRED     SMART authentication
+                 ALTERNATIVE  auth-cookie                   ← an existing Keycloak SSO session
+                 ALTERNATIVE  smart-access-authenticator    ← the vouching above
+                 ALTERNATIVE  SMART forms  →  smart-username-password-form
+```
+
+Keycloak stops at the first alternative that succeeds. An EHR launch carries a `launch` handle, the
+vouching alternative handles it, and the form — which lives in the third branch — is never reached. A
+standalone launch has no handle, that alternative declines with `context.attempted()`, and the form
+runs. Same realm, both behaviours.
+
+**Hop 6 — the token response.** Real, from the exchange above:
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1Ni…",
+  "expires_in": 300,
+  "token_type": "Bearer",
+  "scope": "openid launch profile fhirUser patient/Patient.rs",
+  "patient": "c3ab5d9b-ba13-44f4-9f7f-85db029283ff"
+}
+```
+
+`patient` sits beside the token, **not inside it** — see [Where launch context actually
+lives](#where-launch-context-actually-lives).
+
+## The standalone launch, on the wire
+
+Same destination, opened cold: no EHR session, no handle, so the clinician authenticates and then says
+which patient. Two differences matter.
+
+**The authorization server asks for credentials**, checked against the OpenMRS user table through the
+federation provider — one set of credentials, one place to disable an account.
+
+**Patient selection lands on a servlet, never on a frontend route.** The picker is an O3 route, and the
+O3 app shell renders *no* route without a session: it redirects to the login page, discarding the
+launch token in the URL. So the authorization server is pointed at `/ms/smartPatientSelection`, which
+sits behind the bypass filter, becomes a session, and only then redirects to the picker:
+
+```java
+// SmartPatientSelectionServlet — after the filter has authenticated from the token
+StringBuilder target = new StringBuilder(request.getContextPath())
+    .append("/spa/smart/select-patient")
+    .append("?token=").append(URLEncoder.encode(token, "UTF-8"));
+response.sendRedirect(target.toString());   // deliberately not encodeRedirectURL: no jsessionid in the URL
+```
+
+This is the failure that passed a full `curl` walk while being broken in every browser — `curl` never
+runs the app shell.
+
+When the clinician chooses, `/ms/smartLaunchOptionSelected` signs the choice and hands back. It refuses
+an unauthenticated caller with `401`, a target that is not the authorization server with `400`, and
+`launch/encounter` with `501` — there is no visit-selection screen yet.
+
+## Reading FHIR with the token
+
+The access token is a normal RS256 JWT signed by the authorization server. Its real claims:
+
+```
+alg=RS256, kid=tURRzsLE7oUF…
+claims: aud, azp, exp, iat, iss, jti, preferred_username, scope, sid, typ
+aud    : http://localhost/openmrs/ws/fhir2/R4
+scope  : openid launch profile fhirUser patient/Patient.rs
+preferred_username: doctor
+```
+
+`preferred_username` is what names the OpenMRS user; without it the token verifies and still names
+nobody, which is why the module logs that case specifically. Verification is deliberately narrow:
+
+```java
+processor.setJWSKeySelector(new JWSVerificationKeySelector<>(PERMITTED_ALGORITHMS, keySource));
+List<String> required = Arrays.asList("exp", "iss", "aud");
+JWTClaimsSet expected = new JWTClaimsSet.Builder().issuer(config.getIssuer()).build();
+DefaultJWTClaimsVerifier<SecurityContext> claimsVerifier =
+        new DefaultJWTClaimsVerifier<>(config.getAudience(), expected, new HashSet<>(required));
+claimsVerifier.setMaxClockSkew(config.getAllowedClockSkewSeconds());
+```
+
+Asymmetric algorithms only — accepting an HMAC here would mean accepting a token signed with a secret
+this module also holds. `exp` is *required*, not merely honoured when present. `aud` is checked as
+membership, per RFC 7519 §4.1.3, because Keycloak issues multi-audience tokens and exact equality
+rejected them.
+
+A call, and the two ways it can be refused:
+
+```console
+$ curl -H "Authorization: Bearer $ACCESS_TOKEN" $FHIR/Patient/c3ab5d9b-…
+200 OK
+
+$ curl -i $FHIR/Patient                       # no Authorization header at all
+HTTP/1.1 401
+Content-Type: text/html;charset=UTF-8          ← fhir2's own refusal; this module never sees it
+
+$ curl -i -H "Authorization: Bearer nonsense" $FHIR/Patient
+HTTP/1.1 401
+WWW-Authenticate: Bearer error="invalid_token" ← this module's filter
+```
+
+The token is proof for one request, not a login: the filter is mapped to the FHIR API alone and logs
+out in a `finally`. The filter it replaced was mapped to every request in the webapp.
+
+## Where launch context actually lives
+
+Worth stating plainly, because the module currently gets this wrong in a way that is invisible.
+
+SMART 2.x puts launch context in the **token response**, which only the app sees. The resource server
+receives the access token, and the access token has no `patient` claim — verified above by decoding a
+real one. The realm's mapper is configured as though it did:
+
+```
+access.token.claim         = true
+access.tokenResponse.claim = true
+```
+
+but the mapper implements only the response half:
+
+```java
+public class SmartContextClaimMapper extends AbstractOIDCProtocolMapper
+        implements OIDCAccessTokenResponseMapper {
+```
+
+so `access.token.claim` can never take effect. Consequently `SmartAccessToken.getPatient()`, the
+`patient` on `SmartBearerCredentials`, and the request attributes the bearer filter sets are **always
+null**. Nothing depends on them today, which is why nothing has failed — but granular scope
+enforcement would, since it needs to know *which* patient a `patient/Patient.rs` token is scoped to,
+and that fact is not in the token.
+
+## Other decisions worth knowing
+
+The launch and token mechanics are above; these are the rest.
 **The authentication scheme is not a Spring component.**
 `Context.setAuthenticationScheme()` resolves `getBean(AuthenticationScheme.class)`, which permits
 exactly one bean. Registering ours as `@Component` silently disabled the authentication module with
@@ -317,6 +463,10 @@ Listed because pretending otherwise is worse.
 - **Discovery endpoints are derived Keycloak-shaped.** `SmartConfigServlet` falls back to
   `/protocol/openid-connect/*` when the configuration does not state them. Reading the issuer's own
   discovery document is the correct answer.
+- **Launch context never reaches the resource server.** The realm's context mapper sets
+  `access.token.claim = true`, but implements only `OIDCAccessTokenResponseMapper`, so the access
+  token carries no `patient`. Every read of it in this module is therefore null. Granular scope
+  enforcement needs that fact and will have to get it another way.
 - **`introspection_endpoint` is advertised without a client that can use it.** Introspection requires
   client authentication, and the token endpoint here offers only `client_secret_basic` and
   `private_key_jwt` — so a public app reading the discovery document finds an endpoint it cannot

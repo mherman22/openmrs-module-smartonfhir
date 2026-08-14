@@ -514,6 +514,11 @@ Listed because pretending otherwise is worse.
 - **Discovery endpoints are derived Keycloak-shaped.** `SmartConfigServlet` falls back to
   `/protocol/openid-connect/*` when the configuration does not state them. Reading the issuer's own
   discovery document is the correct answer.
+- **Launch handles live in one JVM.** They are held in a per-node cache, so a clustered deployment
+  needs sticky sessions or a launch can fail with "Unknown launch" after a redirect lands elsewhere.
+  Sticky sessions are already required, since OpenMRS does not replicate the HTTP session either. The
+  platform's cache manager is not a fix: its clustered configuration is an invalidation cache, which
+  shares evictions rather than values.
 - **Launch context never reaches the resource server.** The realm's context mapper sets
   `access.token.claim = true`, but implements only `OIDCAccessTokenResponseMapper`, so the access
   token carries no `patient`. Every read of it in this module is therefore null. Granular scope

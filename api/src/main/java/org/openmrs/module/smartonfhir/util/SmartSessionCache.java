@@ -24,6 +24,21 @@ public class SmartSessionCache {
 	 * request, so two threads racing at startup could build two caches and publish one: a handle issued
 	 * into the discarded cache then redeemed as "Unknown launch". Non-volatile publication also allowed
 	 * another thread to observe a partly constructed cache.
+	 * <p>
+	 * <strong>This cache lives in one JVM.</strong> A launch crosses several browser redirects, two of
+	 * which reach OpenMRS, so behind a load balancer a handle issued by one node is unknown to another
+	 * and redemption fails intermittently as "Unknown launch". That is acceptable because a clustered
+	 * OpenMRS already requires sticky sessions -- {@code UserContext} lives in the HTTP session and
+	 * nothing replicates it, including the marker this module sets -- so every hop of a launch lands on
+	 * the node that issued the handle. What remains is a node failing mid-launch, inside the five
+	 * minute window, which costs the clinician a retry.
+	 * <p>
+	 * The platform's own cache manager does not help here: its clustered configuration defines an
+	 * {@code invalidation-cache}, which broadcasts evictions rather than sharing values, so a handle
+	 * would still be invisible on the other node. Making this genuinely node-independent means either a
+	 * replicated cache, which needs a JGroups transport the deployment has to configure, or dropping
+	 * server-side state and signing the context into the handle itself -- which would trade away single
+	 * use, since consuming a handle on redemption is what stops it being replayed.
 	 */
 	private static final Cache<String, SmartSession> CACHE = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES)
 	        .maximumSize(500).recordStats().build();

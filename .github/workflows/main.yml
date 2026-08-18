@@ -2,39 +2,35 @@ name: Build with Maven
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master]
   pull_request:
-    branches: [ master ]
+    branches: [ master]
   workflow_dispatch:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        platform: [ ubuntu-latest ]
-        java-version: [ 1.8 ]
+    uses: openmrs/openmrs-contrib-gha-workflows/.github/workflows/build-backend-module.yml@main
+    with:
+      # Stated rather than inferred. The shared workflow derives the matrix from the OpenMRS
+      # platform dependency, which for 2.8.8 includes Java 8 -- and this module sets
+      # maven.compiler.release=17, so a JDK 8 build cannot compile it at all. 17 is the
+      # bytecode target; 21 is what RefApp 3.7.1 actually runs it on. Both have to pass.
+      java_versions: '[17, 21]'
+      # The build whose omod is published. Must be the bytecode target, or the artifact would
+      # carry class files the stated target does not promise.
+      main_java_version: '17'
+    secrets:
+      MAVEN_REPO_USERNAME: ${{ secrets.MAVEN_REPO_USERNAME }}
+      MAVEN_REPO_API_KEY: ${{ secrets.MAVEN_REPO_API_KEY }}
 
-    runs-on: ${{ matrix.platform }}
-    env:
-      PLATFORM: ${{ matrix.platform }}
-      JAVA_VERSION: ${{ matrix.java-version }}
-
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up JDK
-        uses: actions/setup-java@v1
-        with:
-          java-version: ${{ matrix.java-version }}
-      - name: Cache local Maven repository
-        uses: actions/cache@v2
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-      - name: Build with Maven
-        run: mvn clean install --batch-mode --file pom.xml
-      - name: Send data to Codecov
-        uses: codecov/codecov-action@v1
-        with:
-          env_vars: PLATFORM, JAVA_VERSION
+  # Not on pull requests: the scan fails the build at CVSS 6.2, and a CVE published in a
+  # transitive dependency would then block a review that has nothing to do with it. It also
+  # cannot read NVD_API_KEY from a fork, so it runs slowly and rate-limited there.
+  owasp-dependency-check:
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: openmrs/openmrs-contrib-gha-workflows/.github/workflows/owasp-dependency-check.yml@main
+    with:
+      java_version: '17'
+    secrets:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+      BOT_GH_TOKEN: ${{ secrets.OMRS_BOT_GH_TOKEN }}

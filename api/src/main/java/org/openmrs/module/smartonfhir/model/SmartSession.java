@@ -7,15 +7,20 @@
  * Copyright (C) OpenMRS Inc. OpenMRS is a registered trademark and the OpenMRS
  * graphic logo is a trademark of OpenMRS Inc.
  */
-package org.openmrs.module.smartonfhir;
+package org.openmrs.module.smartonfhir.model;
 
-import lombok.extern.slf4j.Slf4j;
-import org.openmrs.module.BaseModuleActivator;
+import lombok.Data;
 
-/**
- * This class contains the logic that is run every time this module is either started or shutdown
- */
-@Slf4j
-public class SMARTonFHIRActivator extends BaseModuleActivator {
+@Data
+public class SmartSession {
 
+	private String visitUuid;
+
+	private String patientUuid;
+
+	/**
+	 * The user this launch was created for. A launch handle is only redeemable by them, so a handle
+	 * that reaches somebody else is useless.
+	 */
+	private String username;
 }

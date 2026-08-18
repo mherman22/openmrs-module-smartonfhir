@@ -36,10 +36,24 @@ public class SmartConfigServlet extends HttpServlet {
 	 * clinician signs in with their own OpenMRS credentials, chooses a patient, and the token response
 	 * carries that patient as launch context. They were absent until that was true.
 	 * <p>
+	 * {@code context-ehr-encounter} is claimed on the same terms: an EHR launch naming a visit has been
+	 * walked, and the token response carried that visit back as {@code encounter}. The EHR already
+	 * knows the encounter, so nothing has to be chosen during the launch.
+	 * <p>
+	 * Both EHR context capabilities hold only for the first launch in a browser session. The realm
+	 * tries {@code auth-cookie} before the SMART authenticator, so a second launch reuses the Keycloak
+	 * session, establishes no fresh context, and hands the app whatever the previous launch left --
+	 * including the previous patient. That is a realm-flow defect rather than a module one, and it is
+	 * why these two capabilities are worth re-measuring whenever the flow changes.
+	 * <p>
 	 * Deliberately absent:
 	 * <ul>
 	 * <li>{@code permission-v2}, because granular scopes are parsed but not enforced. Enforcement
 	 * belongs in the FHIR resource providers, not in this module.</li>
+	 * <li>{@code context-standalone-encounter}, because a standalone launch has no encounter to start
+	 * from and there is no screen for choosing one: that is the request
+	 * {@link SmartLaunchOptionSelected} refuses with 501. It is the standalone counterpart that is
+	 * missing, not the EHR one.</li>
 	 * </ul>
 	 */
 	private static final String[] CAPABILITIES = new String[] { "launch-ehr", "launch-standalone", "client-public",
@@ -103,8 +117,9 @@ public class SmartConfigServlet extends HttpServlet {
 		// Only scopes the authorization server will actually grant. The wildcard forms were advertised
 		// here for a while and answered invalid_scope, because expanding them is the authorization
 		// server's job and Keycloak does not: a scope has to exist as a client scope to be requestable.
-		// launch/encounter is advertised because the scope is granted; what it needs and does not have
-		// is a visit-selection screen.
+		// launch/encounter is granted and honoured on an EHR launch, where the EHR names the visit. A
+		// standalone launch asking for it is refused with 501, because choosing a visit needs a screen
+		// that does not exist -- which is why context-standalone-encounter is not among the capabilities.
 		conformance.setScopesSupported(new String[] { "openid", "profile", "fhirUser", "launch", "launch/patient",
 		        "launch/encounter", "patient/Patient.rs", "patient/Observation.rs", "patient/Condition.rs",
 		        "patient/Encounter.rs", "offline_access" });

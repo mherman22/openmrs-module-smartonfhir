@@ -76,9 +76,12 @@ public class SmartLaunchOptionSelected extends HttpServlet {
 		}
 
 		if (launchTypeString.contains("encounter") && visitId == null) {
-			// The screen that chose a visit was a RefApp 2.x page, removed with the rest of that UI: it
-			// could not have rendered in a distribution without uiframework. Refused plainly rather than
-			// redirected to a page that no longer exists, until a replacement exists.
+			// This is the standalone path -- the patient picker sends the clinician here -- so a visit has
+			// to be chosen, and the screen that chose one was a RefApp 2.x page removed with the rest of
+			// that UI: it could not have rendered in a distribution without uiframework. Refused plainly
+			// rather than redirected to a page that no longer exists, until a replacement exists. An EHR
+			// launch never reaches this: the EHR names the visit, so context-ehr-encounter is claimed
+			// while context-standalone-encounter is not.
 			log.error("An encounter launch was requested, but there is no visit-selection screen to send the user to");
 			res.sendError(HttpServletResponse.SC_NOT_IMPLEMENTED, "Encounter launch is not supported");
 			return;

@@ -76,8 +76,12 @@ public class SmartConfigServlet extends HttpServlet {
 		conformance.setAuthorizationEndpoint(
 		    orDerived(config.getAuthorizationEndpoint(), issuer, "/protocol/openid-connect/auth"));
 		conformance.setTokenEndpoint(orDerived(config.getTokenEndpoint(), issuer, "/protocol/openid-connect/token"));
-		conformance.setIntrospectionEndpoint(
-		    orDerived(config.getIntrospectionEndpoint(), issuer, "/protocol/openid-connect/token/introspect"));
+		// Stated only, never derived. Introspection requires client authentication, and the app this
+		// project ships is a public client: Keycloak answers it 403 "Client not allowed." Deriving the
+		// endpoint advertised one every such app could find and none could use, which is the failure that
+		// looks like the app's fault. A deployment that has registered a confidential client for
+		// introspection sets introspection-endpoint and gets it advertised again.
+		conformance.setIntrospectionEndpoint(config.getIntrospectionEndpoint());
 		conformance
 		        .setRevocationEndpoint(orDerived(config.getRevocationEndpoint(), issuer, "/protocol/openid-connect/revoke"));
 		// Without this an app cannot discover how to log anybody out, and logging out of OpenMRS alone

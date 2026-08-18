@@ -104,7 +104,8 @@ the discovery document is not served at all rather than served with guesses.
 | `advertised-jwks-uri` | What apps are *told*, for when that differs from the above. |
 | `username-claim` | The claim naming the OpenMRS user. Defaults to `preferred_username`. |
 | `allowed-clock-skew-seconds` | Skew tolerated on `exp` and `nbf`. Defaults to 30. |
-| `authorization-endpoint`, `token-endpoint`, `introspection-endpoint`, `revocation-endpoint`, `end-session-endpoint`, `registration-endpoint` | Optional. Derived from the issuer using OpenID Connect's conventional paths when absent. |
+| `authorization-endpoint`, `token-endpoint`, `revocation-endpoint`, `end-session-endpoint`, `registration-endpoint` | Optional. Derived from the issuer using OpenID Connect's conventional paths when absent. |
+| `introspection-endpoint` | Optional, and never derived. Introspection needs a confidential client; advertising a derived one told every public app about an endpoint it would be refused. State it only where such a client exists. |
 
 `advertised-jwks-uri` exists for the case where the authorization server has two names: this module
 fetches keys server-to-server and may use a container-internal address, while an app reads the
@@ -523,10 +524,13 @@ Listed because pretending otherwise is worse.
   `access.token.claim = true`, but implements only `OIDCAccessTokenResponseMapper`, so the access
   token carries no `patient`. Every read of it in this module is therefore null. Granular scope
   enforcement needs that fact and will have to get it another way.
-- **`introspection_endpoint` is advertised without a client that can use it.** Introspection requires
-  client authentication, and the token endpoint here offers only `client_secret_basic` and
-  `private_key_jwt` — so a public app reading the discovery document finds an endpoint it cannot
-  authenticate to. Either register a confidential client for it or stop advertising it.
+- **`introspection_endpoint` is no longer advertised by default.** Introspection requires client
+  authentication, and the app this project ships is a public client, which Keycloak answers `403
+  {"error":"invalid_request","error_description":"Client not allowed."}`. The endpoint used to be
+  derived from the issuer, so every app could discover one and none could use it. It is now advertised
+  only where a deployment states `introspection-endpoint` in `smart-oauth2.json`, which is the case
+  where a confidential client exists to authenticate to it. `revocation_endpoint` is still derived and
+  has not been measured against a public client.
 - **The launch token is decoded twice.** `SmartLaunchOptionSelected` calls `URLDecoder.decode` on a
   value the container already decoded. It is load-bearing — the `{APP_TOKEN}` placeholder only appears
   after the second pass — and preserved deliberately, because the chain is verified end to end around

@@ -44,8 +44,13 @@ public class SmartConfigServlet extends HttpServlet {
 	 * <p>
 	 * Deliberately absent:
 	 * <ul>
-	 * <li>{@code permission-v2}, because granular scopes are parsed but not enforced. Enforcement
-	 * belongs in the FHIR resource providers, not in this module.</li>
+	 * <li>{@code permission-v1}, {@code permission-v2}, {@code permission-patient} and
+	 * {@code permission-user}. Scopes are requested, granted and returned in the token, and then
+	 * nothing restricts a request by them: the launching clinician's own privileges are the only
+	 * boundary. SMART is explicit that a granted scope is a ceiling, so claiming any of these would
+	 * tell an application that a limit it asked for is being kept when it is not. Enforcement belongs
+	 * in the FHIR resource providers, which have no supported way to accept an interceptor from another
+	 * module.</li>
 	 * <li>{@code context-ehr-encounter}, even though the EHR half works: an EHR launch naming a visit
 	 * does return it as {@code encounter}. No deployment exercises it now, and a capability nothing
 	 * walks is one nobody notices breaking, so it is not claimed.</li>
@@ -55,8 +60,7 @@ public class SmartConfigServlet extends HttpServlet {
 	 * </ul>
 	 */
 	private static final String[] CAPABILITIES = new String[] { "launch-ehr", "launch-standalone", "client-public",
-	        "client-confidential-symmetric", "context-ehr-patient", "context-standalone-patient", "permission-patient",
-	        "permission-user", "sso-openid-connect" };
+	        "client-confidential-symmetric", "context-ehr-patient", "context-standalone-patient", "sso-openid-connect" };
 
 	private SmartConformance smartConformance;
 

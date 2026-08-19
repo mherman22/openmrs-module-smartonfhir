@@ -36,29 +36,27 @@ public class SmartConfigServlet extends HttpServlet {
 	 * clinician signs in with their own OpenMRS credentials, chooses a patient, and the token response
 	 * carries that patient as launch context. They were absent until that was true.
 	 * <p>
-	 * {@code context-ehr-encounter} is claimed on the same terms: an EHR launch naming a visit has been
-	 * walked, and the token response carried that visit back as {@code encounter}. The EHR already
-	 * knows the encounter, so nothing has to be chosen during the launch.
-	 * <p>
-	 * Both EHR context capabilities hold only for the first launch in a browser session. The realm
-	 * tries {@code auth-cookie} before the SMART authenticator, so a second launch reuses the Keycloak
-	 * session, establishes no fresh context, and hands the app whatever the previous launch left --
-	 * including the previous patient. That is a realm-flow defect rather than a module one, and it is
-	 * why these two capabilities are worth re-measuring whenever the flow changes.
+	 * {@code context-ehr-patient} is claimed on the same terms, and holds only while the realm tries
+	 * the SMART authenticator before {@code auth-cookie}. With the cookie first, a second launch in one
+	 * browser session is satisfied by the existing Keycloak session, establishes no fresh context, and
+	 * hands the app the previous launch's patient. The distribution's realm orders it correctly; a
+	 * deployment that reorders it should re-measure this rather than assume it.
 	 * <p>
 	 * Deliberately absent:
 	 * <ul>
 	 * <li>{@code permission-v2}, because granular scopes are parsed but not enforced. Enforcement
 	 * belongs in the FHIR resource providers, not in this module.</li>
+	 * <li>{@code context-ehr-encounter}, even though the EHR half works: an EHR launch naming a visit
+	 * does return it as {@code encounter}. No deployment exercises it now, and a capability nothing
+	 * walks is one nobody notices breaking, so it is not claimed.</li>
 	 * <li>{@code context-standalone-encounter}, because a standalone launch has no encounter to start
 	 * from and there is no screen for choosing one: that is the request
-	 * {@link SmartLaunchOptionSelected} refuses with 501. It is the standalone counterpart that is
-	 * missing, not the EHR one.</li>
+	 * {@link SmartLaunchOptionSelected} refuses with 501.</li>
 	 * </ul>
 	 */
 	private static final String[] CAPABILITIES = new String[] { "launch-ehr", "launch-standalone", "client-public",
-	        "client-confidential-symmetric", "context-ehr-patient", "context-ehr-encounter", "context-standalone-patient",
-	        "permission-patient", "permission-user", "sso-openid-connect" };
+	        "client-confidential-symmetric", "context-ehr-patient", "context-standalone-patient", "permission-patient",
+	        "permission-user", "sso-openid-connect" };
 
 	private SmartConformance smartConformance;
 

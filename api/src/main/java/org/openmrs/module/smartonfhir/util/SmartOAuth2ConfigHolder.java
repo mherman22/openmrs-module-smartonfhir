@@ -15,9 +15,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Paths;
+import java.util.Properties;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.openmrs.api.context.Context;
 import org.openmrs.module.smartonfhir.model.SmartOAuth2Config;
 import org.openmrs.util.OpenmrsUtil;
 
@@ -69,7 +71,29 @@ public class SmartOAuth2ConfigHolder {
 		loadAttempted = false;
 	}
 
+	/**
+	 * Runtime properties the configuration may be given in, in preference to the file.
+	 * <p>
+	 * The reference application image turns {@code OMRS_CONFIG_SMART_ISSUER} into {@code smart.issuer}
+	 * and so on, so a container is configured through its environment rather than by writing a JSON
+	 * file into the application data directory. The file remains supported, and is still the way to
+	 * express anything these five properties do not cover.
+	 */
+	public static final String ISSUER_PROPERTY = "smart.issuer";
+
+	public static final String AUDIENCE_PROPERTY = "smart.audience";
+
+	public static final String JWKS_URI_PROPERTY = "smart.jwks.uri";
+
+	public static final String ADVERTISED_JWKS_URI_PROPERTY = "smart.advertised.jwks.uri";
+
+	public static final String USERNAME_CLAIM_PROPERTY = "smart.username.claim";
+
 	private static void load() {
+		if (loadFromRuntimeProperties()) {
+			return;
+		}
+
 		final File file = configFile();
 
 		if (!file.canRead()) {
@@ -93,6 +117,62 @@ public class SmartOAuth2ConfigHolder {
 		catch (IOException e) {
 			log.error("Could not read {}", file.getAbsolutePath(), e);
 		}
+	}
+
+	/**
+	 * Builds the configuration from runtime properties, returning whether it did.
+	 * <p>
+	 * Both an issuer and an audience are required, as they are in the file: an issuer alone would let
+	 * this module accept a token minted for another FHIR server. Anything short of both is treated as
+	 * "not configured this way" and leaves the file to be tried.
+	 */
+	private static boolean loadFromRuntimeProperties() {
+		final Properties properties;
+
+		try {
+			properties = Context.getRuntimeProperties();
+		}
+		catch (Exception e) {
+			// Reached before the runtime properties exist; the file path can still serve.
+			return false;
+		}
+
+		if (properties == null) {
+			return false;
+		}
+
+		final String issuer = trimmed(properties.getProperty(ISSUER_PROPERTY));
+		final String audience = trimmed(properties.getProperty(AUDIENCE_PROPERTY));
+
+		if (issuer == null && audience == null) {
+			return false;
+		}
+
+		if (issuer == null || audience == null) {
+			log.error("Both {} and {} must be set; ignoring the runtime properties and looking for {}", ISSUER_PROPERTY,
+			    AUDIENCE_PROPERTY, CONFIG_FILE_NAME);
+			return false;
+		}
+
+		SmartOAuth2Config fromProperties = new SmartOAuth2Config();
+		fromProperties.setIssuer(issuer);
+		fromProperties.setAudience(audience);
+		fromProperties.setJwksUri(trimmed(properties.getProperty(JWKS_URI_PROPERTY)));
+		fromProperties.setAdvertisedJwksUri(trimmed(properties.getProperty(ADVERTISED_JWKS_URI_PROPERTY)));
+
+		String usernameClaim = trimmed(properties.getProperty(USERNAME_CLAIM_PROPERTY));
+		if (usernameClaim != null) {
+			fromProperties.setUsernameClaim(usernameClaim);
+		}
+
+		config = fromProperties;
+		log.info("SMART on FHIR configured from runtime properties for issuer {} and audience {}", issuer, audience);
+
+		return true;
+	}
+
+	private static String trimmed(String value) {
+		return value == null || value.trim().isEmpty() ? null : value.trim();
 	}
 
 	private static File configFile() {

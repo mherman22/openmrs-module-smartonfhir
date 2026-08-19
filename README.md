@@ -45,7 +45,7 @@ rather than from the access token's claims.
 | EHR launch | Works. The launch endpoint issues a handle and redirects to the app; the chart affordance that calls it belongs to the frontend, not here. |
 | Bearer-token access to the FHIR API | Works. Tokens verified against the authorization server's published keys. |
 | Discovery document | Served, with the fields SMART 2.x requires. |
-| EHR launch with encounter context | Works on the first launch in a browser session. The EHR names the visit; the token response carries it back as `encounter`. A later launch in the same session inherits the earlier one's context — see below. |
+| EHR launch with encounter context | Works — the EHR names the visit and the token response carries it back as `encounter` — but not advertised, because no environment walks it. |
 | Standalone launch with visit selection | Refused with `501`. Choosing a visit needs a screen, and the RefApp 2.x one went with that UI. |
 | Granular (v2) scope enforcement | Not implemented. Scopes are parsed and advertised, never enforced — enforcement belongs in FHIR2's resource providers. |
 | Backend Services (`client_credentials`) | Not implemented. |
@@ -511,19 +511,16 @@ Listed because pretending otherwise is worse.
 - **Granular scopes are advertised but not enforced.** They are parsed off the token and handed to
   callers; nothing refuses a request that exceeds them. Enforcement belongs in FHIR2's resource
   providers.
-- **A second launch in one browser session inherits the first launch's context.** Measured: launch from
-  patient A's chart, then from patient B's, and the app is handed **patient A**. The realm tries
-  `auth-cookie` before `smart-access-authenticator`, so once a Keycloak session exists the SMART
-  authenticator never runs, no fresh context notes are written, and the mapper emits what the previous
-  launch left behind. Deleting Keycloak's `KEYCLOAK_IDENTITY` and `KEYCLOAK_SESSION` cookies between
-  launches makes both launches correct, which is what identifies the cause. Both `context-ehr-patient`
-  and `context-ehr-encounter` are therefore true only for the first launch in a session. The fix is in
-  the realm flow, not here.
-- **A standalone launch cannot establish encounter context.** `launch/encounter` is honoured on an EHR
-  launch, where the EHR names the visit — walked end to end, with the visit coming back as `encounter`
-  in the token response. A standalone launch asking for it is refused with 501, because choosing a visit
-  needs a screen that went with the RefApp 2.x UI. That is why `context-ehr-encounter` is advertised and
-  `context-standalone-encounter` is not.
+- **Launch context depends on the realm's flow order, which this module cannot enforce.** A launch
+  establishes fresh context only if the SMART authenticator is tried before `auth-cookie`. With the
+  cookie first, a second launch in one browser session is satisfied by the existing Keycloak session,
+  writes no context notes, and the mapper emits what the previous launch left — so an app launched from
+  patient B's chart is handed patient A. That was measured, and the fix is in the realm, which lives in
+  the distribution. Nothing here can detect a realm that has been reordered.
+- **Encounter context is not advertised.** An EHR launch naming a visit does return it as `encounter`,
+  but no environment exercises it, and a capability nothing walks is one nobody notices breaking. A
+  standalone launch asking for `launch/encounter` is refused with 501 regardless, because choosing a
+  visit needs a screen that went with the RefApp 2.x UI.
 - **Discovery endpoints are derived Keycloak-shaped.** `SmartConfigServlet` falls back to
   `/protocol/openid-connect/*` when the configuration does not state them. Reading the issuer's own
   discovery document is the correct answer.

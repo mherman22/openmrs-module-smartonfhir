@@ -508,9 +508,12 @@ that the filter never sits in front of the session endpoint O3 logs in through.
 
 Listed because pretending otherwise is worse.
 
-- **Granular scopes are advertised but not enforced.** They are parsed off the token and handed to
-  callers; nothing refuses a request that exceeds them. Enforcement belongs in FHIR2's resource
-  providers.
+- **Scopes are granted and not enforced, and no `permission-*` capability is advertised because of it.**
+  Scopes are requested, granted and returned; nothing refuses a request that exceeds them, so a launched
+  app acts with the privileges of the clinician who launched it. SMART is explicit that a granted scope
+  is a ceiling, so advertising `permission-patient` or `permission-user` would promise a limit that is
+  not kept. Enforcement belongs in FHIR2's resource providers, which expose no supported way for another
+  module to contribute an interceptor.
 - **Launch context depends on the realm's flow order, which this module cannot enforce.** A launch
   establishes fresh context only if the SMART authenticator is tried before `auth-cookie`. With the
   cookie first, a second launch in one browser session is satisfied by the existing Keycloak session,

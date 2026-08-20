@@ -2,9 +2,12 @@ name: Build with Maven
 
 on:
   push:
-    branches: [ master]
+    branches: [ master ]
   pull_request:
-    branches: [ master]
+    # The FM2-687 layers are based on each other rather than on master, and a
+    # pull_request filter matches the base branch -- so a master-only filter
+    # leaves every layer above the bottom one with no checks at all.
+    branches: [ master, 'fm2/**' ]
   workflow_dispatch:
 
 jobs:

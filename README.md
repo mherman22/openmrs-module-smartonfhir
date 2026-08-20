@@ -191,6 +191,10 @@ should name your issuer, and its `capabilities` should list `launch-standalone`.
 
 ## How a launch works
 
+*Writing an app rather than deploying this module? [INTEGRATING.md](INTEGRATING.md) is the guide for you:
+registering a client, both launch types, and every step through to ending the session — with the failures
+each mistake actually produces.*
+
 Two servers are involved, and **they never talk to each other**. Everything passes through the
 clinician's browser as a series of redirects. Keycloak decides who the user is and what an app may
 see; OpenMRS holds the patient data and vouches for who is signed in.
@@ -506,7 +510,9 @@ that the filter never sits in front of the session endpoint O3 logs in through.
 
 ## Known gaps in this repo
 
-Listed because pretending otherwise is worse.
+Listed because pretending otherwise is worse. The full measurement is in
+[CONFORMANCE.md](CONFORMANCE.md), section by section against SMART App Launch 2.2.0; what to do about it
+is in [ROADMAP.md](ROADMAP.md).
 
 - **Scopes are granted and not enforced, and no `permission-*` capability is advertised because of it.**
   Scopes are requested, granted and returned; nothing refuses a request that exceeds them, so a launched

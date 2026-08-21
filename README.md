@@ -77,7 +77,9 @@ and leaves every SMART endpoint dark.
 
 ## Configuration
 
-Three JSON files under `<application data directory>/config`, and two runtime properties.
+Three JSON files under `<application data directory>/config`, and the runtime properties that
+override them. Either route works on its own, and they can be mixed — see
+[Configuring from the environment instead](#configuring-from-the-environment-instead).
 
 Every key below is spelled the way the code binds it. The config classes ignore unknown properties,
 so **a misspelled key is discarded in silence** rather than reported. All of them are hyphenated, not
@@ -155,6 +157,49 @@ endpoint an open redirector for single-use launch handles.
 `id` and `launchUrl` are required; an entry missing either is dropped, because it would otherwise
 appear in a list of apps and then fail when chosen. `launchContext` is `patient` (the default) or
 `encounter`, and a launch asking for something else is refused.
+
+### Configuring from the environment instead
+
+Every key in the two files above that a container is likely to set has a runtime property, so a
+deployment need not write JSON into a volume to say two strings. In `openmrs-runtime.properties`:
+
+```properties
+smart.issuer=https://keycloak.example.org/realms/openmrs
+smart.audience=https://openmrs.example.org/openmrs/ws/fhir2/R4
+smart.jwks.uri=http://keycloak:8080/realms/openmrs/protocol/openid-connect/certs
+smart.advertised.jwks.uri=https://keycloak.example.org/realms/openmrs/protocol/openid-connect/certs
+smart.username.claim=preferred_username
+smart.launch.secret=<base64, at least 256 bits>
+```
+
+The reference application image maps environment variables onto these, uppercased and prefixed, so
+`OMRS_CONFIG_SMART_ISSUER` becomes `smart.issuer` and no properties file need be edited by hand.
+
+| property | overrides |
+|---|---|
+| `smart.issuer` | `issuer` in `smart-oauth2.json` |
+| `smart.audience` | `audience` |
+| `smart.jwks.uri` | `jwks-uri` |
+| `smart.advertised.jwks.uri` | `advertised-jwks-uri` |
+| `smart.username.claim` | `username-claim` |
+| `smart.launch.secret` | `smart-shared-secret-key` in `smart-secret-key.json` |
+
+**The two sources layer.** The file is read first and each property then replaces only the key it
+names, so setting `smart.issuer` leaves the rest of `smart-oauth2.json` — including
+`allowed-clock-skew-seconds` and any explicit endpoint, which no property covers — exactly as it was.
+A file and an environment can also each supply half of what is required: a file naming only the
+issuer plus `smart.audience` in the environment is a complete configuration, where neither was alone.
+
+`issuer` and `audience` are still both required, from whichever source. The startup log names the
+properties it applied and whether they overrode a file, so check there when a value is not the one
+you expected:
+
+```
+SMART on FHIR configured for issuer https://... and audience https://...; smart.issuer from runtime properties over smart-oauth2.json
+```
+
+There is no runtime property for the launchable apps. `smart-apps.json` is a list of objects rather
+than a handful of scalars, and it stays a file.
 
 ### 4. Register the bearer scheme
 
